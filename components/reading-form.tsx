@@ -1,0 +1,120 @@
+"use client"
+
+import { useState } from "react"
+import { supabase } from "@/lib/supabase"
+import { cmToLiters } from "@/lib/tank-lookup"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { format } from "date-fns"
+
+interface ReadingFormProps {
+  onSuccess: () => void
+  onCancel: () => void
+}
+
+export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
+  const [levelCm, setLevelCm] = useState("")
+  const [isRefill, setIsRefill] = useState(false)
+  const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+
+    const cmNum = parseFloat(levelCm)
+    if (!isRefill && (isNaN(cmNum) || cmNum <= 0)) {
+      setError("Level must be a positive number.")
+      return
+    }
+
+    setSaving(true)
+    const { error: supabaseError } = await supabase.from("readings").insert({
+      recorded_at: new Date(date).toISOString(),
+      level_cm: isRefill ? null : cmNum,
+      level_liters: isRefill ? null : cmToLiters(cmNum),
+      is_refill: isRefill,
+      notes: notes.trim() || (isRefill ? "pieno" : null),
+    })
+
+    if (supabaseError) {
+      setError(supabaseError.message)
+      setSaving(false)
+    } else {
+      onSuccess()
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="date">Date & time</Label>
+        <Input
+          id="date"
+          type="datetime-local"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          id="is-refill"
+          type="checkbox"
+          checked={isRefill}
+          onChange={(e) => setIsRefill(e.target.checked)}
+          className="h-4 w-4 rounded border-border"
+        />
+        <Label htmlFor="is-refill">Tank refill (pieno)</Label>
+      </div>
+
+      {!isRefill && (
+        <div className="space-y-1.5">
+          <Label htmlFor="level-cm">Level (cm)</Label>
+          <Input
+            id="level-cm"
+            type="number"
+            min="0"
+            step="0.5"
+            value={levelCm}
+            onChange={(e) => setLevelCm(e.target.value)}
+            placeholder="e.g. 55"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            {levelCm && !isNaN(parseFloat(levelCm))
+              ? `≈ ${cmToLiters(parseFloat(levelCm))} L`
+              : "Dip-stick or gauge reading in centimetres."}
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="notes">Notes (optional)</Label>
+        <Textarea
+          id="notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder={isRefill ? "e.g. +990lt delivered" : "e.g. checked before trip"}
+          rows={2}
+        />
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving…" : "Add reading"}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
