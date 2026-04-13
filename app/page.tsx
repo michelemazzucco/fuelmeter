@@ -100,6 +100,7 @@ export default function DashboardPage() {
               daysRemaining={prediction.daysRemaining}
               dailyRateLiters={prediction.dailyRateLiters}
               hasEnoughData={prediction.hasEnoughData}
+              isSeasonal={prediction.isSeasonal}
             />
           </CardContent>
         </Card>

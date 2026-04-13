@@ -1,11 +1,13 @@
-import { format, differenceInDays } from "date-fns"
+import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 
 interface RunoutCardProps {
   runOutDate: Date | null
   daysRemaining: number | null
   dailyRateLiters: number | null
   hasEnoughData: boolean
+  isSeasonal: boolean
 }
 
 export function RunoutCard({
@@ -13,6 +15,7 @@ export function RunoutCard({
   daysRemaining,
   dailyRateLiters,
   hasEnoughData,
+  isSeasonal,
 }: RunoutCardProps) {
   if (!hasEnoughData) {
     return (
@@ -40,7 +43,12 @@ export function RunoutCard({
             {daysRemaining} day{daysRemaining !== 1 ? "s" : ""} remaining
           </p>
         )}
-        {dailyRateLiters !== null && <p>Avg. {dailyRateLiters} L/day consumption</p>}
+        {dailyRateLiters !== null && (
+          <p className="flex items-center gap-2">
+            Avg. {dailyRateLiters} L/day consumption
+            {isSeasonal && <Badge variant="outline">Seasonal</Badge>}
+          </p>
+        )}
       </div>
     </div>
   )
