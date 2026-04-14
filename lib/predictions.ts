@@ -259,7 +259,28 @@ export function computePrediction(
     }
   }
 
-  // Seasonal projection: apply monthly weights scaled to the recent segment rate
+  // Seasonal projection: calibrate recentDailyRate to the true annual mean.
+  // The current segment may be winter-heavy (or summer-heavy), so treating
+  // recentDailyRate as the annual average would over/under-shoot other seasons.
+  // Fix: divide by the average seasonal weight of the current segment's days.
+  const segStart = new Date(oldest.recorded_at)
+  const segEnd = new Date(newest.recorded_at)
+  let segWeightedSum = 0
+  let segTotalDays = 0
+  let segCursor = segStart
+  while (segCursor < segEnd) {
+    const nextMonth = startOfMonth(addMonths(segCursor, 1))
+    const end = nextMonth < segEnd ? nextMonth : segEnd
+    const days = differenceInDays(end, segCursor)
+    if (days > 0) {
+      segWeightedSum += weights[segCursor.getMonth()] * days
+      segTotalDays += days
+    }
+    segCursor = nextMonth
+  }
+  const avgSegmentWeight = segTotalDays > 0 ? segWeightedSum / segTotalDays : 1
+  const calibratedRate = recentDailyRate / avgSegmentWeight
+
   const currentLevel = newest.level_liters!
   const startDate = new Date(newest.recorded_at)
   const currentMonthWeight = weights[startDate.getMonth()]
@@ -276,7 +297,7 @@ export function computePrediction(
 
   while (level > 0 && dayCount < MAX_DAYS) {
     const w = weights[cursor.getMonth()]
-    level -= recentDailyRate * w
+    level -= calibratedRate * w
     cursor = addDays(cursor, 1)
     dayCount++
 
@@ -290,7 +311,7 @@ export function computePrediction(
   }
 
   return {
-    dailyRateLiters: Math.round(recentDailyRate * currentMonthWeight * 10) / 10,
+    dailyRateLiters: Math.round(calibratedRate * currentMonthWeight * 10) / 10,
     runOutDate: cursor,
     daysRemaining: dayCount,
     forecastPoints: [...historicalPoints, ...projectedPoints],
