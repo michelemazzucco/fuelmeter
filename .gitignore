@@ -39,3 +39,30 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI coding assistant configs
+.agents/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.kilocode/
+.kiro/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.windsurf/
+.zencoder/
+
+# Claude Code skills
+skills/
+skills-lock.json

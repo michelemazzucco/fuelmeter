@@ -1,31 +1,33 @@
-import { differenceInDays, addDays, addMonths, startOfMonth, format } from "date-fns"
+import { differenceInDays, addDays, addMonths, startOfMonth } from "date-fns"
 import type { Reading } from "./supabase"
 
 export type ForecastPoint = {
-  date: string
+  date: number        // Unix timestamp (ms) — used as numeric X axis
   level: number
   projected: boolean
+  levelLow?: number   // pessimistic: +1σ consumption rate (runs out sooner)
+  levelHigh?: number  // optimistic:  −1σ consumption rate (runs out later)
 }
 
 /**
- * Finds the most recent continuous downward segment of readings.
- * This handles tank refills — we only use consumption since the last fill-up.
- * Only readings with known level_liters are considered.
+ * Finds the most recent consumption segment by locating the last refill reading.
+ * Falls back to the last level increase for data without is_refill flags.
  */
 function getLastConsumptionSegment(readings: Reading[]): Reading[] {
   if (readings.length < 2) return readings
 
-  let segmentStart = 0
+  for (let i = readings.length - 1; i >= 0; i--) {
+    if (readings[i].is_refill) return readings.slice(i)
+  }
+
+  // Fallback: detect refill by level increase
   for (let i = readings.length - 1; i > 0; i--) {
-    const curr = readings[i].level_liters!
-    const prev = readings[i - 1].level_liters!
-    if (curr > prev) {
-      segmentStart = i
-      break
+    if (readings[i].level_liters! > readings[i - 1].level_liters!) {
+      return readings.slice(i)
     }
   }
 
-  return readings.slice(segmentStart)
+  return readings
 }
 
 /**
@@ -53,6 +55,88 @@ function getAllConsumptionSegments(sorted: Reading[]): Reading[][] {
   }
 
   return segments
+}
+
+/**
+ * OLS linear regression on paired (x, y) observations.
+ * Returns slope, intercept, and residual standard error.
+ * Returns null if fewer than 2 points or zero x-variance.
+ */
+function olsRegression(
+  xs: number[],
+  ys: number[]
+): {
+  slope: number
+  intercept: number
+  residualStdErr: number
+  sxx: number
+  xMean: number
+  n: number
+} | null {
+  const n = xs.length
+  if (n < 2) return null
+
+  const xMean = xs.reduce((s, x) => s + x, 0) / n
+  const yMean = ys.reduce((s, y) => s + y, 0) / n
+  let sxx = 0
+  let sxy = 0
+  for (let i = 0; i < n; i++) {
+    sxx += (xs[i] - xMean) ** 2
+    sxy += (xs[i] - xMean) * (ys[i] - yMean)
+  }
+  if (sxx === 0) return null
+
+  const slope = sxy / sxx
+  const intercept = yMean - slope * xMean
+
+  let sse = 0
+  for (let i = 0; i < n; i++) {
+    sse += (ys[i] - (slope * xs[i] + intercept)) ** 2
+  }
+  const residualStdErr = n > 2 ? Math.sqrt(sse / (n - 2)) : 0
+
+  return { slope, intercept, residualStdErr, sxx, xMean, n }
+}
+
+/**
+ * Computes the average seasonal weight over a date range.
+ * Used to normalise a segment's raw rate to a season-independent calibrated rate.
+ */
+function averageWeight(weights: number[], start: Date, end: Date): number {
+  let weightedSum = 0
+  let totalDays = 0
+  let cursor = start
+  while (cursor < end) {
+    const nextMonth = startOfMonth(addMonths(cursor, 1))
+    const segEnd = nextMonth < end ? nextMonth : end
+    const days = differenceInDays(segEnd, cursor)
+    if (days > 0) {
+      weightedSum += weights[cursor.getMonth()] * days
+      totalDays += days
+    }
+    cursor = nextMonth
+  }
+  return totalDays > 0 ? weightedSum / totalDays : 1
+}
+
+/**
+ * Computes the calibrated annual daily rate for a segment via OLS.
+ * Divides the OLS consumption rate by the average seasonal weight of the
+ * segment, yielding a season-independent rate (litres/day at mean seasonal load).
+ * Returns null if the segment has insufficient data or is not net-consuming.
+ */
+function segmentCalibratedRate(segment: Reading[], weights: number[]): number | null {
+  if (segment.length < 2) return null
+  const t0 = new Date(segment[0].recorded_at)
+  const xs = segment.map((r) => differenceInDays(new Date(r.recorded_at), t0))
+  const ys = segment.map((r) => r.level_liters!)
+  const ols = olsRegression(xs, ys)
+  if (!ols || ols.slope >= 0) return null
+
+  const rawRate = -ols.slope
+  const segEnd = new Date(segment[segment.length - 1].recorded_at)
+  const avgW = averageWeight(weights, t0, segEnd)
+  return rawRate / avgW
 }
 
 /**
@@ -177,8 +261,8 @@ export function computePrediction(
       dailyRateLiters: null,
       runOutDate: null,
       daysRemaining: null,
-      forecastPoints: sorted.map((r) => ({
-        date: format(new Date(r.recorded_at), "MMM d"),
+      forecastPoints: segment.map((r) => ({
+        date: new Date(r.recorded_at).getTime(),
         level: r.level_liters!,
         projected: false,
       })),
@@ -206,8 +290,17 @@ export function computePrediction(
     }
   }
 
-  const totalConsumed = oldest.level_liters! - newest.level_liters!
-  const recentDailyRate = totalConsumed / totalDays
+  // OLS regression through all readings in the current segment.
+  // More robust than endpoint-to-endpoint when intermediate readings contain noise.
+  const t0 = new Date(oldest.recorded_at)
+  const segXs = segment.map((r) => differenceInDays(new Date(r.recorded_at), t0))
+  const segYs = segment.map((r) => r.level_liters!)
+  const segOls = olsRegression(segXs, segYs)
+
+  // Fall back to endpoint rate if OLS fails or implies a net gain (post-refill noise)
+  const endpointRate = (oldest.level_liters! - newest.level_liters!) / totalDays
+  const recentDailyRate =
+    segOls && segOls.slope < 0 ? -segOls.slope : endpointRate
 
   if (recentDailyRate <= 0) {
     return {
@@ -220,11 +313,25 @@ export function computePrediction(
     }
   }
 
-  const historicalPoints: ForecastPoint[] = sorted.map((r) => ({
-    date: format(new Date(r.recorded_at), "MMM d"),
+  const historicalPoints: ForecastPoint[] = segment.map((r) => ({
+    date: new Date(r.recorded_at).getTime(),
     level: r.level_liters!,
     projected: false,
   }))
+
+  // Extend the actual line to today if the last reading is in the past
+  const today = new Date()
+  const newestDate = new Date(newest.recorded_at)
+  const daysSinceLastReading = differenceInDays(today, newestDate)
+  if (daysSinceLastReading > 0) {
+    historicalPoints.push({
+      date: today.getTime(),
+      level: newest.level_liters!,
+      projected: false,
+    })
+  }
+  // Projection always starts from today (or the last reading if it's today)
+  const projectionStart = daysSinceLastReading > 0 ? today : newestDate
 
   const weights = computeMonthlyWeights(sorted)
 
@@ -232,19 +339,19 @@ export function computePrediction(
     // Flat-rate fallback: insufficient seasonal data
     const currentLevel = newest.level_liters!
     const daysRemaining = Math.floor(currentLevel / recentDailyRate)
-    const runOutDate = addDays(new Date(newest.recorded_at), daysRemaining)
+    const runOutDate = addDays(projectionStart, daysRemaining)
 
     const projectedPoints: ForecastPoint[] = []
     const step = Math.max(1, Math.floor(daysRemaining / 10))
     for (let d = step; d <= daysRemaining; d += step) {
       projectedPoints.push({
-        date: format(addDays(new Date(newest.recorded_at), d), "MMM d"),
+        date: addDays(projectionStart, d).getTime(),
         level: Math.max(0, Math.round((currentLevel - recentDailyRate * d) * 10) / 10),
         projected: true,
       })
     }
     projectedPoints.push({
-      date: format(runOutDate, "MMM d"),
+      date: runOutDate.getTime(),
       level: 0,
       projected: true,
     })
@@ -259,59 +366,85 @@ export function computePrediction(
     }
   }
 
-  // Seasonal projection: calibrate recentDailyRate to the true annual mean.
-  // The current segment may be winter-heavy (or summer-heavy), so treating
-  // recentDailyRate as the annual average would over/under-shoot other seasons.
-  // Fix: divide by the average seasonal weight of the current segment's days.
+  // ── Seasonal path ─────────────────────────────────────────────────────────
+
+  // Average seasonal weight over the current segment, used to convert the
+  // raw OLS rate into a season-independent calibrated rate (L/day at mean load).
   const segStart = new Date(oldest.recorded_at)
   const segEnd = new Date(newest.recorded_at)
-  let segWeightedSum = 0
-  let segTotalDays = 0
-  let segCursor = segStart
-  while (segCursor < segEnd) {
-    const nextMonth = startOfMonth(addMonths(segCursor, 1))
-    const end = nextMonth < segEnd ? nextMonth : segEnd
-    const days = differenceInDays(end, segCursor)
-    if (days > 0) {
-      segWeightedSum += weights[segCursor.getMonth()] * days
-      segTotalDays += days
-    }
-    segCursor = nextMonth
+  const avgSegmentWeight = averageWeight(weights, segStart, segEnd)
+  const currentCalibratedRate = recentDailyRate / avgSegmentWeight
+
+  // ── Historical rate analysis ──────────────────────────────────────────────
+
+  const allSegments = getAllConsumptionSegments(sorted)
+  const historicalSegments = allSegments.slice(0, -1) // all complete segments before current
+  const historicalRates = historicalSegments
+    .map((seg) => segmentCalibratedRate(seg, weights))
+    .filter((r): r is number => r !== null && r > 0)
+
+  // ── Blending: trust OLS fully after 90 days, blend with historical mean before ──
+
+  let blendedCalibratedRate = currentCalibratedRate
+  if (historicalRates.length >= 1 && totalDays < 90) {
+    const histMean = historicalRates.reduce((s, r) => s + r, 0) / historicalRates.length
+    const alpha = totalDays / 90
+    blendedCalibratedRate = alpha * currentCalibratedRate + (1 - alpha) * histMean
   }
-  const avgSegmentWeight = segTotalDays > 0 ? segWeightedSum / segTotalDays : 1
-  const calibratedRate = recentDailyRate / avgSegmentWeight
+
+  // ── Uncertainty: 1σ from cross-segment rate distribution ─────────────────
+
+  const allRates = [...historicalRates, currentCalibratedRate]
+  let rateStdDev = 0
+  if (allRates.length >= 2) {
+    const mean = allRates.reduce((s, r) => s + r, 0) / allRates.length
+    rateStdDev = Math.sqrt(allRates.reduce((s, r) => s + (r - mean) ** 2, 0) / allRates.length)
+  }
+
+  // ── Forward projection ────────────────────────────────────────────────────
 
   const currentLevel = newest.level_liters!
-  const startDate = new Date(newest.recorded_at)
+  const startDate = projectionStart
   const currentMonthWeight = weights[startDate.getMonth()]
 
-  // Step size based on flat-rate estimate so we get ~12 projected points
+  // Step size targets ~12 projected chart points
   const flatDaysEstimate = Math.max(1, Math.floor(currentLevel / recentDailyRate))
   const step = Math.max(7, Math.floor(flatDaysEstimate / 12))
 
+  // Pessimistic (more consumption) and optimistic (less consumption) rates
+  const rateLow = Math.max(blendedCalibratedRate + rateStdDev, 0.01)
+  const rateHigh = Math.max(blendedCalibratedRate - rateStdDev, 0.01)
+  const hasUncertainty = rateStdDev > 0
+
   const projectedPoints: ForecastPoint[] = []
   let level = currentLevel
+  let levelLow = currentLevel
+  let levelHigh = currentLevel
   let cursor = startDate
   let dayCount = 0
   const MAX_DAYS = 3650 // 10-year safety cap
 
   while (level > 0 && dayCount < MAX_DAYS) {
     const w = weights[cursor.getMonth()]
-    level -= calibratedRate * w
+    level -= blendedCalibratedRate * w
+    levelLow -= rateLow * w
+    levelHigh -= rateHigh * w
     cursor = addDays(cursor, 1)
     dayCount++
 
     if (dayCount % step === 0 || level <= 0) {
       projectedPoints.push({
-        date: format(cursor, "MMM d"),
+        date: cursor.getTime(),
         level: Math.max(0, Math.round(level * 10) / 10),
         projected: true,
+        levelLow: hasUncertainty ? Math.max(0, Math.round(levelLow * 10) / 10) : undefined,
+        levelHigh: hasUncertainty ? Math.max(0, Math.round(levelHigh * 10) / 10) : undefined,
       })
     }
   }
 
   return {
-    dailyRateLiters: Math.round(calibratedRate * currentMonthWeight * 10) / 10,
+    dailyRateLiters: Math.round(blendedCalibratedRate * currentMonthWeight * 10) / 10,
     runOutDate: cursor,
     daysRemaining: dayCount,
     forecastPoints: [...historicalPoints, ...projectedPoints],

@@ -31,14 +31,15 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
       setError("Level must be a positive number.")
       return
     }
+    const hasCm = !isNaN(cmNum) && cmNum > 0
 
     setSaving(true)
     const { error: supabaseError } = await supabase.from("readings").insert({
       recorded_at: new Date(date).toISOString(),
-      level_cm: isRefill ? null : cmNum,
-      level_liters: isRefill ? null : cmToLiters(cmNum),
+      level_cm: hasCm ? cmNum : null,
+      level_liters: hasCm ? cmToLiters(cmNum) : null,
       is_refill: isRefill,
-      notes: notes.trim() || (isRefill ? "pieno" : null),
+      notes: notes.trim() || null,
     })
 
     if (supabaseError) {
@@ -70,29 +71,29 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
           onChange={(e) => setIsRefill(e.target.checked)}
           className="h-4 w-4 rounded border-border"
         />
-        <Label htmlFor="is-refill">Tank refill (pieno)</Label>
+        <Label htmlFor="is-refill">Tank refill</Label>
       </div>
 
-      {!isRefill && (
-        <div className="space-y-1.5">
-          <Label htmlFor="level-cm">Level (cm)</Label>
-          <Input
-            id="level-cm"
-            type="number"
-            min="0"
-            step="0.5"
-            value={levelCm}
-            onChange={(e) => setLevelCm(e.target.value)}
-            placeholder="e.g. 55"
-            required
-          />
-          <p className="text-xs text-muted-foreground">
-            {levelCm && !isNaN(parseFloat(levelCm))
-              ? `≈ ${cmToLiters(parseFloat(levelCm))} L`
-              : "Dip-stick or gauge reading in centimetres."}
-          </p>
-        </div>
-      )}
+      <div className="space-y-1.5">
+        <Label htmlFor="level-cm">Level (cm){isRefill && " — optional"}</Label>
+        <Input
+          id="level-cm"
+          type="number"
+          min="0"
+          step="0.5"
+          value={levelCm}
+          onChange={(e) => setLevelCm(e.target.value)}
+          placeholder="e.g. 55"
+          required={!isRefill}
+        />
+        <p className="text-xs text-muted-foreground">
+          {levelCm && !isNaN(parseFloat(levelCm))
+            ? `≈ ${cmToLiters(parseFloat(levelCm))} L`
+            : isRefill
+            ? "Post-refill dip-stick reading, if available."
+            : "Dip-stick or gauge reading in centimetres."}
+        </p>
+      </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="notes">Notes (optional)</Label>

@@ -112,7 +112,7 @@ export default function ReadingsPage() {
                     <TableCell className="text-sm">
                       <div className="flex items-center gap-2">
                         {format(new Date(r.recorded_at), "dd MMM yyyy")}
-                        {r.is_refill && <Badge variant="secondary">pieno</Badge>}
+                        {r.is_refill && <Badge variant="secondary">Refill</Badge>}
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm">
