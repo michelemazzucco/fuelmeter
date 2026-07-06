@@ -1,5 +1,5 @@
 import { differenceInDays, addDays, addMonths, startOfMonth } from "date-fns"
-import type { Reading } from "./supabase"
+import type { Reading } from "./types"
 
 export type ForecastPoint = {
   date: number        // Unix timestamp (ms) — used as numeric X axis

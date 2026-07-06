@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { supabase } from "@/lib/supabase"
+import { addReading } from "@/lib/actions"
 import { cmToLiters } from "@/lib/tank-lookup"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,19 +34,18 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
     const hasCm = !isNaN(cmNum) && cmNum > 0
 
     setSaving(true)
-    const { error: supabaseError } = await supabase.from("readings").insert({
-      recorded_at: new Date(date).toISOString(),
-      level_cm: hasCm ? cmNum : null,
-      level_liters: hasCm ? cmToLiters(cmNum) : null,
-      is_refill: isRefill,
-      notes: notes.trim() || null,
-    })
-
-    if (supabaseError) {
-      setError(supabaseError.message)
-      setSaving(false)
-    } else {
+    try {
+      await addReading({
+        recorded_at: new Date(date).toISOString(),
+        level_cm: hasCm ? cmNum : null,
+        level_liters: hasCm ? cmToLiters(cmNum) : null,
+        is_refill: isRefill,
+        notes: notes.trim() || null,
+      })
       onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add reading.")
+      setSaving(false)
     }
   }
 

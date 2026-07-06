@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { supabase, type TankConfig } from "@/lib/supabase"
+import type { TankConfig } from "@/lib/types"
+import { getTankConfig, saveTankConfig } from "@/lib/actions"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,7 +18,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("tank_config").select("*").limit(1).single()
+      const data = await getTankConfig()
       if (data) {
         setConfig(data)
         setCapacity(String(data.capacity_liters))
@@ -47,20 +48,14 @@ export default function SettingsPage() {
       return
     }
 
-    let error
-    if (config) {
-      ;({ error } = await supabase
-        .from("tank_config")
-        .update({ capacity_liters: capacityNum, low_threshold_liters: thresholdNum, updated_at: new Date().toISOString() })
-        .eq("id", config.id))
-    } else {
-      ;({ error } = await supabase
-        .from("tank_config")
-        .insert({ capacity_liters: capacityNum, low_threshold_liters: thresholdNum }))
-    }
+    const { error } = await saveTankConfig({
+      id: config?.id,
+      capacity_liters: capacityNum,
+      low_threshold_liters: thresholdNum,
+    })
 
     if (error) {
-      setMessage({ type: "error", text: error.message })
+      setMessage({ type: "error", text: error })
     } else {
       setMessage({ type: "success", text: "Settings saved." })
     }

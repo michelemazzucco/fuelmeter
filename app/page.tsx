@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { supabase, type Reading, type TankConfig } from "@/lib/supabase"
+import type { Reading, TankConfig } from "@/lib/types"
+import { getReadings, getTankConfig } from "@/lib/actions"
 import { computePrediction } from "@/lib/predictions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FuelGauge } from "@/components/fuel-gauge"
@@ -24,11 +25,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: readingsData }, { data: configData }] = await Promise.all([
-        supabase.from("readings").select("*").order("recorded_at", { ascending: true }),
-        supabase.from("tank_config").select("*").limit(1).single(),
+      const [readingsData, configData] = await Promise.all([
+        getReadings("asc"),
+        getTankConfig(),
       ])
-      setReadings(readingsData ?? [])
+      setReadings(readingsData)
       if (configData) setConfig(configData)
       setLoading(false)
     }
