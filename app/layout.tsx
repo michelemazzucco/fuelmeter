@@ -5,8 +5,6 @@ import { cn } from "@/lib/utils";
 import { isAuthenticated } from "@/lib/auth";
 import { AuthProvider } from "@/components/auth-provider";
 import { AppNav } from "@/components/app-nav";
-import { AuthProvider } from "@/components/auth-provider";
-import { isAuthenticated } from "@/lib/auth";
 
 const ubuntuMono = Ubuntu_Mono({
   subsets: ["latin"],
