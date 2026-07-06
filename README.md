@@ -1,47 +1,44 @@
 # FuelMeter
 
-**Know how much diesel is left in the tank — and when it'll run out.**
+Know how much diesel is left in the tank, and when it'll run out.
 
 ## Why it exists
 
 Up in the mountains I heat the house and the water with a diesel tank, and "do I
 have enough to make it through winter" used to be a vibe rather than a number. The
-tank has no gauge — you check it with a dip-stick, get a reading in centimetres,
-and then… guess.
+tank has no gauge. You check it with a dip-stick, get a reading in centimetres, and
+then guess.
 
 So I built FuelMeter. I log the dip-stick reading, it converts to litres off the
 manufacturer's calibration table, and it tells me roughly when I'll run out. The
-bit I'm weirdly proud of is the forecast: a flat consumption rate is useless,
-because I burn far more diesel in January than in May. So instead of averaging,
-it learns the seasonal pattern from my own history and puts a confidence band
-around the prediction.
+bit I'm weirdly proud of is the forecast: a flat rate lies, because I burn way more
+in January than in May. So instead of averaging, it learns the seasonal pattern
+from my own history and draws a confidence band around the projection.
 
-It's a personal project — something I actually use and dogfood every winter.
+It's deeply boring to anyone but me, and I check it constantly.
 
 ## What it does
 
-- **Log a reading** in centimetres (the raw dip-stick measurement) and mark
-  refills.
-- **Converts cm → litres** against the manufacturer's calibration table
-  (`lib/tank-lookup.ts`, 1–110 cm mapping to a full tank of 1564 L), interpolating
-  for decimal values.
-- **Shows the state of the tank** — a fuel gauge and a consumption chart of your
-  history.
+- **Log a reading** in centimetres (the raw dip-stick measurement) and mark refills.
+- **Converts cm to litres** against the manufacturer's calibration table
+  (`lib/tank-lookup.ts`, 1–110 cm maps to a full tank of 1564 L), interpolating for
+  decimal values.
+- **Shows the tank state**: a fuel gauge and a consumption chart of your history.
 - **Forecasts the run-out date** with a seasonal model learned from your own usage,
-  not a naive flat rate — complete with a confidence band.
+  not a flat rate, and puts a confidence band around it.
 
 ## How the forecast works
 
 The predictor (`lib/predictions.ts`) finds the current fill cycle (the readings
 since the last refill) and estimates a consumption rate with OLS linear regression
-over that segment — more robust than endpoint-to-endpoint when a single reading is
-noisy. Just after a refill, when the segment is short, that rate is blended with
-your historical average so early predictions aren't wild.
+over that segment, which holds up better than endpoint-to-endpoint when a single
+reading is noisy. Just after a refill, when the segment is short, that rate is
+blended with your historical average so early predictions aren't wild.
 
 On top of that it derives 12 monthly seasonal weights from all of your history, so
 the projection burns fuel faster in winter and slower in summer instead of assuming
-a constant rate. Cross-segment variation in the calibrated rate becomes a ±1σ
-confidence band drawn around the forecast line.
+a constant rate. The spread between segments becomes a ±1σ confidence band around
+the forecast line.
 
 For the full model details, see [`CLAUDE.md`](./CLAUDE.md).
 
@@ -53,7 +50,7 @@ For the full model details, see [`CLAUDE.md`](./CLAUDE.md).
 - **Recharts** for charts · **date-fns** for date math
 
 Pages are client components that call **Server Actions** (`lib/actions.ts`) for all
-reads and writes; the database client is server-only.
+reads and writes. The database client is server-only.
 
 ## Getting started
 
@@ -91,5 +88,4 @@ production (Turso + Vercel) setup.
 
 ## Author
 
-A personal project by [Michele Mazzucco](https://michelemazzucco.it) — a product
-designer who codes, and a firm believer in building software you use yourself.
+A personal project by [Michele Mazzucco](https://michelemazzucco.it).
