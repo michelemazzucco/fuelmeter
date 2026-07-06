@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { login } from "@/lib/actions"
 import { useAuth } from "@/components/auth-provider"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PaperBox } from "@/components/paper"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -39,46 +39,48 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="max-w-sm mx-auto mt-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Log in</CardTitle>
-          <CardDescription>
+    <div className="max-w-sm">
+      <h1 className="sr-only">Login</h1>
+      <PaperBox label="Login">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <p className="text-muted-foreground uppercase">
             Sign in to add readings and edit settings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </div>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? "Logging in…" : "Log in"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="username" className="uppercase">
+              Username
+            </Label>
+            <Input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              required
+              autoComplete="username"
+              className="border-[0.5px] bg-transparent"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="uppercase">
+              Password
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="border-[0.5px] bg-transparent"
+            />
+          </div>
+          {error && <p className="uppercase text-destructive">{error}</p>}
+          <Button type="submit" disabled={submitting} className="uppercase">
+            {submitting ? "Logging in…" : "Login"}
+          </Button>
+        </form>
+      </PaperBox>
     </div>
   )
 }

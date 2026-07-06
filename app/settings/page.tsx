@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import type { TankConfig } from "@/lib/types"
 import { getTankConfig, saveTankConfig } from "@/lib/actions"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PaperBox } from "@/components/paper"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -65,73 +65,76 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return (
+      <p className="uppercase text-muted-foreground">Loading…</p>
+    )
   }
 
   return (
     <div className="max-w-md">
-      <h1 className="text-2xl font-semibold mb-6">Settings</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Tank Configuration</CardTitle>
-          <CardDescription>
-            Set your tank's total capacity and the low-level alert threshold.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSave} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="capacity">Tank capacity (litres)</Label>
-              <Input
-                id="capacity"
-                type="number"
-                min="1"
-                step="any"
-                value={capacity}
-                onChange={(e) => setCapacity(e.target.value)}
-                placeholder="e.g. 1000"
-                disabled={!isAuthenticated}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="threshold">Low-level threshold (litres)</Label>
-              <Input
-                id="threshold"
-                type="number"
-                min="0"
-                step="any"
-                value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
-                placeholder="e.g. 150"
-                disabled={!isAuthenticated}
-              />
-              <p className="text-xs text-muted-foreground">
-                The gauge turns red when the level drops below this value.
-              </p>
-            </div>
+      <h1 className="sr-only">Settings</h1>
+      <PaperBox label="Tank configuration">
+        <form onSubmit={handleSave} className="space-y-5">
+          <p className="text-muted-foreground uppercase">
+            Total capacity and the low-level alert threshold.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="capacity" className="uppercase">
+              Tank capacity (litres)
+            </Label>
+            <Input
+              id="capacity"
+              type="number"
+              min="1"
+              step="any"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              placeholder="e.g. 1000"
+              disabled={!isAuthenticated}
+              className="border-[0.5px] bg-transparent tabular-nums disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="threshold" className="uppercase">
+              Low-level threshold (litres)
+            </Label>
+            <Input
+              id="threshold"
+              type="number"
+              min="0"
+              step="any"
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              placeholder="e.g. 150"
+              disabled={!isAuthenticated}
+              className="border-[0.5px] bg-transparent tabular-nums disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground"
+            />
+            <p className="text-muted-foreground uppercase">
+              The gauge turns red below this value.
+            </p>
+          </div>
 
-            {message && (
-              <p
-                className={
-                  message.type === "success" ? "text-sm text-green-600" : "text-sm text-destructive"
-                }
-              >
-                {message.text}
-              </p>
-            )}
+          {message && (
+            <p
+              className={
+                message.type === "success"
+                  ? "uppercase"
+                  : "uppercase text-destructive"
+              }
+            >
+              {message.text}
+            </p>
+          )}
 
-            {isAuthenticated ? (
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Save settings"}
-              </Button>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Log in to edit settings.
-              </p>
-            )}
-          </form>
-        </CardContent>
-      </Card>
+          {isAuthenticated ? (
+            <Button type="submit" disabled={saving} className="uppercase">
+              {saving ? "Saving…" : "Save settings"}
+            </Button>
+          ) : (
+            <p className="uppercase text-muted-foreground">Log in to edit settings.</p>
+          )}
+        </form>
+      </PaperBox>
     </div>
   )
 }

@@ -1,13 +1,18 @@
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
+import { LeaderRow } from "@/components/paper"
 
 interface RunoutCardProps {
   runOutDate: Date | null
   daysRemaining: number | null
   dailyRateLiters: number | null
   hasEnoughData: boolean
-  isSeasonal: boolean
+  thresholdLiters: number
+  /** Date the level is forecast to cross the low threshold */
+  thresholdDate: Date | null
+  /** ±1σ run-out window */
+  runOutEarly: Date | null
+  runOutLate: Date | null
 }
 
 export function RunoutCard({
@@ -15,13 +20,16 @@ export function RunoutCard({
   daysRemaining,
   dailyRateLiters,
   hasEnoughData,
-  isSeasonal,
+  thresholdLiters,
+  thresholdDate,
+  runOutEarly,
+  runOutLate,
 }: RunoutCardProps) {
   if (!hasEnoughData) {
     return (
-      <div className="text-sm text-muted-foreground">
+      <p className="uppercase text-muted-foreground">
         Add at least 2 readings to see a prediction.
-      </div>
+      </p>
     )
   }
 
@@ -29,27 +37,30 @@ export function RunoutCard({
 
   return (
     <div className="space-y-1">
-      <div
-        className={cn(
-          "text-3xl font-bold tabular-nums",
-          urgent ? "text-destructive" : "text-foreground"
-        )}
-      >
-        {runOutDate ? format(runOutDate, "d MMM yyyy") : "—"}
-      </div>
-      <div className="text-sm text-muted-foreground space-y-0.5">
-        {daysRemaining !== null && (
-          <p>
-            {daysRemaining} day{daysRemaining !== 1 ? "s" : ""} remaining
-          </p>
-        )}
-        {dailyRateLiters !== null && (
-          <p className="flex items-center gap-2">
-            Avg. {dailyRateLiters} L/day consumption
-            {isSeasonal && <Badge variant="outline">Seasonal</Badge>}
-          </p>
-        )}
-      </div>
+      <LeaderRow
+        className="tabular-nums"
+        label={daysRemaining !== null ? `IN ${daysRemaining} DAYS` : "—"}
+        value={
+          <span className={cn("font-bold", urgent && "text-destructive")}>
+            {runOutDate ? format(runOutDate, "d MMM yyyy").toUpperCase() : "—"}
+          </span>
+        }
+      />
+      {dailyRateLiters !== null && (
+        <LeaderRow label="DAILY RATE" value={`${dailyRateLiters} L/DAY`} />
+      )}
+      {thresholdDate && (
+        <LeaderRow
+          label={`LOW THRESHOLD (${thresholdLiters} L)`}
+          value={format(thresholdDate, "d MMM yyyy").toUpperCase()}
+        />
+      )}
+      {runOutEarly && runOutLate && (
+        <LeaderRow
+          label="CONFIDENCE ±1σ"
+          value={`${format(runOutEarly, "d MMM").toUpperCase()} – ${format(runOutLate, "d MMM").toUpperCase()}`}
+        />
+      )}
     </div>
   )
 }
