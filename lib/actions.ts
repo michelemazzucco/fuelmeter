@@ -1,7 +1,16 @@
 "use server"
 
+import { cookies } from "next/headers"
 import { db } from "./db"
 import type { Reading, TankConfig } from "./types"
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  assertAuthenticated,
+  createSessionToken,
+  isAuthenticated,
+  verifyCredentials,
+} from "./auth"
 
 type Row = Record<string, unknown>
 
@@ -40,6 +49,33 @@ export async function getTankConfig(): Promise<TankConfig | null> {
   return row ? mapConfig(row as Row) : null
 }
 
+export async function login(
+  username: string,
+  password: string
+): Promise<{ error?: string }> {
+  if (!verifyCredentials(username, password)) {
+    return { error: "Invalid username or password." }
+  }
+  const store = await cookies()
+  store.set(SESSION_COOKIE, createSessionToken(), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  })
+  return {}
+}
+
+export async function logout(): Promise<void> {
+  const store = await cookies()
+  store.delete(SESSION_COOKIE)
+}
+
+export async function getAuthState(): Promise<boolean> {
+  return isAuthenticated()
+}
+
 export async function addReading(input: {
   recorded_at: string
   level_cm: number | null
@@ -47,6 +83,7 @@ export async function addReading(input: {
   is_refill: boolean
   notes: string | null
 }): Promise<void> {
+  await assertAuthenticated()
   await db.execute({
     sql: `insert into readings (recorded_at, level_cm, level_liters, is_refill, notes)
           values (?, ?, ?, ?, ?)`,
@@ -61,6 +98,7 @@ export async function addReading(input: {
 }
 
 export async function deleteReading(id: string): Promise<void> {
+  await assertAuthenticated()
   await db.execute({ sql: "delete from readings where id = ?", args: [id] })
 }
 
@@ -70,6 +108,7 @@ export async function saveTankConfig(input: {
   low_threshold_liters: number
 }): Promise<{ error?: string }> {
   try {
+    await assertAuthenticated()
     if (input.id) {
       await db.execute({
         sql: `update tank_config

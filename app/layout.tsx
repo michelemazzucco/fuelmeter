@@ -8,6 +8,8 @@ import {
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AppNav } from "@/components/app-nav";
+import { AuthProvider } from "@/components/auth-provider";
+import { isAuthenticated } from "@/lib/auth";
 
 const spaceGroteskHeading = Space_Grotesk({
   subsets: ["latin"],
@@ -28,11 +30,12 @@ export const metadata: Metadata = {
   description: "Track and predict your diesel tank level",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const authed = await isAuthenticated();
   return (
     <html
       lang="en"
@@ -45,10 +48,12 @@ export default function RootLayout({
       )}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <AppNav />
-        <main className="flex-1 container mx-auto px-4 py-8 max-w-5xl">
-          {children}
-        </main>
+        <AuthProvider isAuthenticated={authed}>
+          <AppNav />
+          <main className="flex-1 container mx-auto px-4 py-8 max-w-5xl">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -7,8 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/components/auth-provider"
 
 export default function SettingsPage() {
+  const isAuthenticated = useAuth()
   const [config, setConfig] = useState<TankConfig | null>(null)
   const [capacity, setCapacity] = useState("")
   const [threshold, setThreshold] = useState("")
@@ -88,6 +90,7 @@ export default function SettingsPage() {
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 placeholder="e.g. 1000"
+                disabled={!isAuthenticated}
               />
             </div>
             <div className="space-y-1.5">
@@ -100,6 +103,7 @@ export default function SettingsPage() {
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
                 placeholder="e.g. 150"
+                disabled={!isAuthenticated}
               />
               <p className="text-xs text-muted-foreground">
                 The gauge turns red when the level drops below this value.
@@ -116,9 +120,15 @@ export default function SettingsPage() {
               </p>
             )}
 
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save settings"}
-            </Button>
+            {isAuthenticated ? (
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save settings"}
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Log in to edit settings.
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>
