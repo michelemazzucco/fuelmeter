@@ -1,9 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Fuel } from "lucide-react"
+import { Fuel, LogIn, LogOut } from "lucide-react"
+import { logout } from "@/lib/actions"
+import { useAuth } from "@/components/auth-provider"
+import { Button, buttonVariants } from "@/components/ui/button"
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -13,6 +16,13 @@ const links = [
 
 export function AppNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  const isAuthenticated = useAuth()
+
+  async function handleLogout() {
+    await logout()
+    router.refresh()
+  }
 
   return (
     <header className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-40">
@@ -37,6 +47,22 @@ export function AppNav() {
             </Link>
           ))}
         </nav>
+        <div className="ml-auto">
+          {isAuthenticated ? (
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="mr-1 h-4 w-4" />
+              Log out
+            </Button>
+          ) : (
+            <Link
+              href="/login"
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+            >
+              <LogIn className="mr-1 h-4 w-4" />
+              Log in
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   )

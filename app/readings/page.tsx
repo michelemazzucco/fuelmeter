@@ -25,10 +25,12 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { ReadingForm } from "@/components/reading-form"
+import { useAuth } from "@/components/auth-provider"
 import { format } from "date-fns"
 import { Plus, Trash2 } from "lucide-react"
 
 export default function ReadingsPage() {
+  const isAuthenticated = useAuth()
   const [readings, setReadings] = useState<Reading[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -64,29 +66,31 @@ export default function ReadingsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Readings</h1>
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger render={<Button />}>
-            <Plus className="mr-1 h-4 w-4" />
-            Add reading
-          </SheetTrigger>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>New reading</SheetTitle>
-              <SheetDescription>
-                Enter the current fuel level from your gauge or dip-stick.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="mt-6">
-              <ReadingForm
-                onSuccess={() => {
-                  setSheetOpen(false)
-                  loadReadings()
-                }}
-                onCancel={() => setSheetOpen(false)}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+        {isAuthenticated && (
+          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+            <SheetTrigger render={<Button />}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add reading
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>New reading</SheetTitle>
+                <SheetDescription>
+                  Enter the current fuel level from your gauge or dip-stick.
+                </SheetDescription>
+              </SheetHeader>
+              <div className="mt-6">
+                <ReadingForm
+                  onSuccess={() => {
+                    setSheetOpen(false)
+                    loadReadings()
+                  }}
+                  onCancel={() => setSheetOpen(false)}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
 
       {readings.length === 0 ? (
@@ -102,7 +106,7 @@ export default function ReadingsPage() {
                 <TableHead>Level (cm)</TableHead>
                 <TableHead>Level (L)</TableHead>
                 <TableHead>Notes</TableHead>
-                <TableHead className="w-10" />
+                {isAuthenticated && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -134,16 +138,18 @@ export default function ReadingsPage() {
                     <TableCell className="text-muted-foreground text-sm">
                       {r.notes ?? "—"}
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        onClick={() => setDeleteTarget(r.id)}
-                        aria-label="Delete reading"
-                      >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </TableCell>
+                    {isAuthenticated && (
+                      <TableCell>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(r.id)}
+                          aria-label="Delete reading"
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })}
