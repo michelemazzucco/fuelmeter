@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { supabase, type Reading } from "@/lib/supabase"
+import type { Reading } from "@/lib/types"
+import { getReadings, getTankConfig, deleteReading } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -35,11 +36,11 @@ export default function ReadingsPage() {
   const [capacity, setCapacity] = useState<number>(1000)
 
   const loadReadings = useCallback(async () => {
-    const [{ data: readingsData }, { data: configData }] = await Promise.all([
-      supabase.from("readings").select("*").order("recorded_at", { ascending: false }),
-      supabase.from("tank_config").select("capacity_liters").limit(1).single(),
+    const [readingsData, configData] = await Promise.all([
+      getReadings("desc"),
+      getTankConfig(),
     ])
-    setReadings(readingsData ?? [])
+    setReadings(readingsData)
     if (configData) setCapacity(configData.capacity_liters)
     setLoading(false)
   }, [])
@@ -50,7 +51,7 @@ export default function ReadingsPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return
-    await supabase.from("readings").delete().eq("id", deleteTarget)
+    await deleteReading(deleteTarget)
     setDeleteTarget(null)
     loadReadings()
   }
