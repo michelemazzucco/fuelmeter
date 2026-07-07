@@ -23,7 +23,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { PaperBox } from "@/components/paper"
 import { ReadingForm } from "@/components/reading-form"
 import { useAuth } from "@/components/auth-provider"
 import { format } from "date-fns"
@@ -115,8 +114,7 @@ function ReadingsPageInner() {
           No readings yet. Add your first one to get started.
         </p>
       ) : (
-        <PaperBox label="Reading log" contentClassName="p-0 pt-2">
-          <Table>
+        <Table>
             <TableHeader>
               <TableRow className="border-b-[0.5px] border-foreground hover:bg-transparent">
                 <TableHead className="h-8 px-4 uppercase text-foreground">Date</TableHead>
@@ -175,8 +173,7 @@ function ReadingsPageInner() {
                 )
               })}
             </TableBody>
-          </Table>
-        </PaperBox>
+        </Table>
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

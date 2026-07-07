@@ -8,6 +8,7 @@ import { PaperBox, LeaderRow } from "@/components/paper";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
 import { ConsumptionChart } from "@/components/consumption-chart";
+import { ConsumptionRangeChart } from "@/components/consumption-range-chart";
 import { TankIllustration } from "@/components/tank-illustration";
 import { format } from "date-fns";
 
@@ -61,8 +62,60 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="space-y-5 lg:col-span-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="space-y-5 lg:col-span-7">
+        <PaperBox label="Estimated run out">
+          <div className="space-y-4">
+            <RunoutCard
+              runOutDate={prediction.runOutDate}
+              daysRemaining={prediction.daysRemaining}
+              dailyRateLiters={prediction.dailyRateLiters}
+              hasEnoughData={prediction.hasEnoughData}
+              thresholdLiters={config.low_threshold_liters}
+              thresholdDate={
+                thresholdPoint ? new Date(thresholdPoint.date) : null
+              }
+              runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
+              runOutLate={latePoint ? new Date(latePoint.date) : null}
+            />
+            <ConsumptionChart
+              forecastPoints={prediction.forecastPoints}
+              thresholdLiters={config.low_threshold_liters}
+              capacityLiters={config.capacity_liters}
+              className="h-64 w-full pt-2"
+            />
+          </div>
+        </PaperBox>
+
+        <PaperBox label="Consumption stats">
+          {prediction.hasEnoughData ? (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <LeaderRow
+                  label="DAILY AVERAGE"
+                  value={`${prediction.dailyRateLiters ?? "—"} L`}
+                />
+                <LeaderRow
+                  label="WEEKLY AVERAGE"
+                  value={
+                    prediction.dailyRateLiters
+                      ? `${Math.round(prediction.dailyRateLiters * 7 * 10) / 10} L`
+                      : "—"
+                  }
+                />
+                <LeaderRow label="TOTAL READINGS" value={readings.length} />
+              </div>
+              <ConsumptionRangeChart readings={readings} className="w-full" />
+            </div>
+          ) : (
+            <p className="uppercase text-muted-foreground">
+              Add at least 2 readings to see stats.
+            </p>
+          )}
+        </PaperBox>
+      </div>
+
+      <div className="flex flex-col gap-5 lg:col-span-5">
         <PaperBox label="Current fuel level">
           {latest ? (
             <div className="space-y-3">
@@ -98,68 +151,21 @@ export default function DashboardPage() {
           )}
         </PaperBox>
 
-        <PaperBox label="Estimated run out">
-          <div className="space-y-4">
-            <RunoutCard
-              runOutDate={prediction.runOutDate}
-              daysRemaining={prediction.daysRemaining}
-              dailyRateLiters={prediction.dailyRateLiters}
-              hasEnoughData={prediction.hasEnoughData}
-              thresholdLiters={config.low_threshold_liters}
-              thresholdDate={
-                thresholdPoint ? new Date(thresholdPoint.date) : null
-              }
-              runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
-              runOutLate={latePoint ? new Date(latePoint.date) : null}
+        {/* Tank illustration */}
+        <section className="relative flex flex-1 items-center justify-center border-[0.5px] border-foreground px-5 py-9">
+          {levelPercent != null ? (
+            <TankIllustration
+              percent={levelPercent}
+              className="w-full max-w-[300px]"
             />
-            <ConsumptionChart
-              forecastPoints={prediction.forecastPoints}
-              thresholdLiters={config.low_threshold_liters}
-              capacityLiters={config.capacity_liters}
-              className="h-64 w-full pt-2"
-            />
-          </div>
-        </PaperBox>
-
-        <PaperBox label="Consumption stats">
-          {prediction.hasEnoughData ? (
-            <div className="space-y-1">
-              <LeaderRow
-                label="DAILY AVERAGE"
-                value={`${prediction.dailyRateLiters ?? "—"} L`}
-              />
-              <LeaderRow
-                label="WEEKLY AVERAGE"
-                value={
-                  prediction.dailyRateLiters
-                    ? `${Math.round(prediction.dailyRateLiters * 7 * 10) / 10} L`
-                    : "—"
-                }
-              />
-              <LeaderRow label="TOTAL READINGS" value={readings.length} />
-            </div>
           ) : (
-            <p className="uppercase text-muted-foreground">
-              Add at least 2 readings to see stats.
-            </p>
+            <p className="uppercase text-muted-foreground">No level data</p>
           )}
-        </PaperBox>
+          <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground">
+            FIG. 001 - HEAT OIL TANK
+          </span>
+        </section>
       </div>
-
-      {/* Tank illustration */}
-      <section className="relative flex items-center justify-center border-[0.5px] border-foreground px-5 py-9">
-        {levelPercent != null ? (
-          <TankIllustration
-            percent={levelPercent}
-            className="w-full max-w-[300px]"
-          />
-        ) : (
-          <p className="uppercase text-muted-foreground">No level data</p>
-        )}
-        <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground">
-          FIG. 001 - HEAT OIL TANK
-        </span>
-      </section>
     </div>
   );
 }

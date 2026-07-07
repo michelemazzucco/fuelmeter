@@ -41,7 +41,7 @@ export function RunoutCard({
         className="tabular-nums"
         label={daysRemaining !== null ? `IN ${daysRemaining} DAYS` : "—"}
         value={
-          <span className={cn("font-bold", urgent && "text-destructive")}>
+          <span className={cn(urgent && "text-destructive")}>
             {runOutDate ? format(runOutDate, "d MMM yyyy").toUpperCase() : "—"}
           </span>
         }

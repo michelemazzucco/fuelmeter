@@ -149,8 +149,9 @@
         line-height: 21px;
     }
     /* Purely visual annotations (e.g. the caption beside the tank drawing)
-     are the one exception to the single type size. */
-    .caption-side {
+     and chart axis values are the exceptions to the single type size. */
+    .caption-side,
+    .recharts-cartesian-axis-tick-value {
         font-size: 11px !important;
         line-height: 12px;
     }
