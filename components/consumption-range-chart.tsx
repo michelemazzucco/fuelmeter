@@ -58,12 +58,7 @@ export function ConsumptionRangeChart({
 
   return (
     <div className={className}>
-      <div className="flex items-center justify-between pb-2">
-        <span className="text-xs uppercase text-muted-foreground">
-          {granularity === "daily"
-            ? `Consumption · last ${visible.length} days`
-            : "Consumption · current tank cycle"}
-        </span>
+      <div className="flex items-center justify-end pb-2">
         <div
           className="flex border-[0.5px] border-foreground"
           role="group"
@@ -76,10 +71,10 @@ export function ConsumptionRangeChart({
               aria-pressed={granularity === g}
               onClick={() => setGranularity(g)}
               className={cn(
-                "px-2 py-0.5 text-xs uppercase transition-colors",
+                "px-2 py-1 text-xs leading-[1em] uppercase transition-colors",
                 granularity === g
                   ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:bg-foreground hover:text-background"
               )}
             >
               {g}

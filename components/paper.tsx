@@ -26,6 +26,19 @@ export function PaperBox({
 }
 
 /**
+ * Page-level loading state: animated braille spinner (CSS-only, see
+ * `.braille-spinner` in globals.css) followed by an ALL-CAPS label.
+ */
+export function LoadingLine({ label = "Loading" }: { label?: string }) {
+  return (
+    <p className="uppercase text-muted-foreground">
+      <span aria-hidden className="braille-spinner mr-2" />
+      {label}
+    </p>
+  )
+}
+
+/**
  * Label ……………… value row with a dashed leader line, as used across the
  * dashboard boxes.
  */

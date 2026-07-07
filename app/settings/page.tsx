@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import type { TankConfig } from "@/lib/types"
 import { getTankConfig, saveTankConfig } from "@/lib/actions"
-import { PaperBox } from "@/components/paper"
+import { PaperBox, LoadingLine } from "@/components/paper"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -65,9 +65,7 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return (
-      <p className="uppercase text-muted-foreground">Loading…</p>
-    )
+    return <LoadingLine />
   }
 
   return (
