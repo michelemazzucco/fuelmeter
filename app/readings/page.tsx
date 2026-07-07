@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ReadingForm } from "@/components/reading-form"
+import { LoadingLine } from "@/components/paper"
 import { useAuth } from "@/components/auth-provider"
 import { format } from "date-fns"
 import { Trash2 } from "lucide-react"
@@ -81,9 +82,7 @@ function ReadingsPageInner() {
   }
 
   if (loading) {
-    return (
-      <p className="uppercase text-muted-foreground">Loading…</p>
-    )
+    return <LoadingLine />
   }
 
   return (
@@ -162,10 +161,11 @@ function ReadingsPageInner() {
                         <Button
                           size="icon-sm"
                           variant="ghost"
+                          className="text-muted-foreground"
                           onClick={() => setDeleteTarget(r.id)}
                           aria-label="Delete reading"
                         >
-                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </TableCell>
                     )}

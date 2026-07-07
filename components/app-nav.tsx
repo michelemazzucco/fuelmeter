@@ -13,7 +13,7 @@ const links = [
 ]
 
 const actionClass =
-  "flex items-center gap-1 bg-primary px-2.5 py-1 uppercase text-primary-foreground"
+  "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-1 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground"
 
 export function AppNav() {
   const pathname = usePathname()
@@ -21,25 +21,25 @@ export function AppNav() {
 
   return (
     <header className="sticky top-0 z-40 bg-background">
-      <div className="mx-auto flex max-w-5xl items-center gap-px px-2">
-        <Link href="/" className="py-1 pr-2.5 font-bold tracking-wide">
+      <div className="mx-auto flex max-w-5xl items-stretch gap-px px-2">
+        <Link href="/" className="flex items-center pr-2.5 font-bold tracking-wide">
           FUELMETER
         </Link>
-        <nav className="flex items-center gap-px">
+        <nav className="flex items-stretch gap-px">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "px-2.5 py-1 tracking-wide transition-colors",
-                pathname === link.href ? "bg-muted" : "hover:bg-muted/50"
+                "flex items-center px-2 leading-[1em] tracking-wide transition-colors hover:bg-foreground hover:text-background",
+                pathname === link.href && "bg-foreground text-background"
               )}
             >
               {link.label}
             </Link>
           ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-stretch">
           {isAuthenticated ? (
             <Link href="/readings?add=1" className={actionClass}>
               <Plus className="h-3.5 w-3.5" />

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Reading, TankConfig } from "@/lib/types";
 import { getReadings, getTankConfig } from "@/lib/actions";
 import { computePrediction } from "@/lib/predictions";
-import { PaperBox, LeaderRow } from "@/components/paper";
+import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
 import { ConsumptionChart } from "@/components/consumption-chart";
@@ -38,7 +38,7 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return <p className="uppercase text-muted-foreground">Loading…</p>;
+    return <LoadingLine />;
   }
 
   const latest = readings.length > 0 ? readings[readings.length - 1] : null;

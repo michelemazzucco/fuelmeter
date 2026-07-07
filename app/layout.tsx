@@ -25,7 +25,7 @@ export default async function RootLayout({
   const authed = await isAuthenticated();
   return (
     <html lang="en" className={cn("h-full antialiased", ubuntuMono.variable)}>
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      <body className="min-h-full flex flex-col bg-background text-foreground px-1 lg:px-0">
         <AuthProvider isAuthenticated={authed}>
           <AppNav />
           <main className="flex-1 w-full mx-auto px-2 pb-8 pt-6 max-w-5xl">
