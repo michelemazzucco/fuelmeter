@@ -13,7 +13,7 @@ export function FuelGauge({ levelLiters, capacityLiters, thresholdLiters }: Fuel
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
-        <span className={cn("tabular-nums", isLow && "text-destructive font-bold")}>
+        <span className={cn("tabular-nums", isLow && "text-destructive")}>
           {Math.round(levelLiters).toLocaleString()} L ({Math.round(pct)}%)
         </span>
         <span className="tabular-nums">{capacityLiters.toLocaleString()} L</span>

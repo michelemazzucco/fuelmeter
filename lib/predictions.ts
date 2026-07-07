@@ -1,4 +1,12 @@
-import { differenceInDays, addDays, addMonths, startOfMonth } from "date-fns"
+import {
+  differenceInDays,
+  addDays,
+  addMonths,
+  startOfMonth,
+  startOfDay,
+  startOfISOWeek,
+  eachDayOfInterval,
+} from "date-fns"
 import type { Reading } from "./types"
 
 export type ForecastPoint = {
@@ -236,6 +244,180 @@ export function computeMonthlyWeights(readings: Reading[]): number[] | null {
   return rawRate.map((r) => r / mean)
 }
 
+type RateModel = {
+  segment: Reading[]            // current consumption segment, length >= 2
+  weights: number[] | null      // seasonal monthly weights; null → flat fallback
+  recentDailyRate: number       // raw OLS/endpoint rate of the current segment (L/day)
+  blendedCalibratedRate: number // season-independent centre rate; equals recentDailyRate when flat
+  rateStdDev: number            // cross-segment 1σ on the calibrated rate; 0 when flat
+}
+
+/**
+ * Fits the consumption-rate model shared by the forecast and the consumption
+ * buckets: current-segment OLS rate, seasonal calibration, historical blending
+ * and cross-segment 1σ. Returns null when the current segment cannot yield a
+ * positive rate (fewer than 2 readings, zero span, or net level gain).
+ */
+function computeRateModel(sorted: Reading[]): RateModel | null {
+  const segment = getLastConsumptionSegment(sorted)
+  if (segment.length < 2) return null
+
+  const oldest = segment[0]
+  const newest = segment[segment.length - 1]
+
+  const totalDays = differenceInDays(
+    new Date(newest.recorded_at),
+    new Date(oldest.recorded_at)
+  )
+  if (totalDays <= 0) return null
+
+  // OLS regression through all readings in the current segment.
+  // More robust than endpoint-to-endpoint when intermediate readings contain noise.
+  const t0 = new Date(oldest.recorded_at)
+  const segXs = segment.map((r) => differenceInDays(new Date(r.recorded_at), t0))
+  const segYs = segment.map((r) => r.level_liters!)
+  const segOls = olsRegression(segXs, segYs)
+
+  // Fall back to endpoint rate if OLS fails or implies a net gain (post-refill noise)
+  const endpointRate = (oldest.level_liters! - newest.level_liters!) / totalDays
+  const recentDailyRate =
+    segOls && segOls.slope < 0 ? -segOls.slope : endpointRate
+  if (recentDailyRate <= 0) return null
+
+  const weights = computeMonthlyWeights(sorted)
+
+  if (weights === null) {
+    return {
+      segment,
+      weights: null,
+      recentDailyRate,
+      blendedCalibratedRate: recentDailyRate,
+      rateStdDev: 0,
+    }
+  }
+
+  // Average seasonal weight over the current segment, used to convert the
+  // raw OLS rate into a season-independent calibrated rate (L/day at mean load).
+  const avgSegmentWeight = averageWeight(weights, t0, new Date(newest.recorded_at))
+  const currentCalibratedRate = recentDailyRate / avgSegmentWeight
+
+  const allSegments = getAllConsumptionSegments(sorted)
+  const historicalSegments = allSegments.slice(0, -1) // all complete segments before current
+  const historicalRates = historicalSegments
+    .map((seg) => segmentCalibratedRate(seg, weights))
+    .filter((r): r is number => r !== null && r > 0)
+
+  // Blending: trust OLS fully after 90 days, blend with historical mean before
+  let blendedCalibratedRate = currentCalibratedRate
+  if (historicalRates.length >= 1 && totalDays < 90) {
+    const histMean = historicalRates.reduce((s, r) => s + r, 0) / historicalRates.length
+    const alpha = totalDays / 90
+    blendedCalibratedRate = alpha * currentCalibratedRate + (1 - alpha) * histMean
+  }
+
+  // Uncertainty: 1σ from cross-segment rate distribution
+  const allRates = [...historicalRates, currentCalibratedRate]
+  let rateStdDev = 0
+  if (allRates.length >= 2) {
+    const mean = allRates.reduce((s, r) => s + r, 0) / allRates.length
+    rateStdDev = Math.sqrt(allRates.reduce((s, r) => s + (r - mean) ** 2, 0) / allRates.length)
+  }
+
+  return { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev }
+}
+
+export type ConsumptionBucket = {
+  periodStart: number // ms timestamp: startOfDay (daily) or startOfISOWeek (weekly)
+  days: number        // days covered (1 for daily; 1–7 for weekly, partial weeks included)
+  low: number         // litres, clamped >= 0, rounded to 0.1
+  mid: number
+  high: number
+  measured: boolean   // true when derived from an actual reading interval
+}
+
+const round1 = (v: number) => Math.round(v * 10) / 10
+
+/**
+ * Buckets estimated consumption over the current segment (last refill → today)
+ * by day or ISO week. Days bracketed by consecutive readings use the measured
+ * interval-average rate (tighter ±0.5σ band); uncovered days use the seasonal
+ * model estimate ±1σ. Returns null when no positive rate can be derived.
+ */
+export function computeConsumptionBuckets(
+  readings: Reading[],
+  granularity: "daily" | "weekly"
+): ConsumptionBucket[] | null {
+  const withLiters = readings.filter((r) => r.level_liters != null)
+  const sorted = [...withLiters].sort(
+    (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+  )
+
+  const model = computeRateModel(sorted)
+  if (model === null) return null
+  const { segment, weights, blendedCalibratedRate, rateStdDev } = model
+
+  // Measured intervals: consecutive segment pairs with a level drop.
+  // Pairs with no drop or zero span fall through to the model estimate.
+  const intervals: { start: number; end: number; rate: number }[] = []
+  for (let i = 0; i < segment.length - 1; i++) {
+    const a = segment[i]
+    const b = segment[i + 1]
+    const dayA = startOfDay(new Date(a.recorded_at))
+    const dayB = startOfDay(new Date(b.recorded_at))
+    const d = differenceInDays(dayB, dayA)
+    if (d <= 0 || a.level_liters! <= b.level_liters!) continue
+    intervals.push({
+      start: dayA.getTime(),
+      end: dayB.getTime(),
+      rate: (a.level_liters! - b.level_liters!) / d,
+    })
+  }
+
+  const allDays = eachDayOfInterval({
+    start: startOfDay(new Date(segment[0].recorded_at)),
+    end: startOfDay(new Date()),
+  })
+
+  const daily: ConsumptionBucket[] = allDays.map((day) => {
+    const t = day.getTime()
+    const w = weights ? weights[day.getMonth()] : 1
+    const interval = intervals.find((iv) => t >= iv.start && t < iv.end)
+    const measured = interval !== undefined
+    const mid = Math.max(0, measured ? interval.rate : blendedCalibratedRate * w)
+    // Measured periods keep half the cross-segment band; floor keeps bars visible
+    const sigma = rateStdDev * w * (measured ? 0.5 : 1)
+    const half = Math.max(sigma, mid * 0.02)
+    return {
+      periodStart: t,
+      days: 1,
+      low: round1(Math.max(0, mid - half)),
+      mid: round1(mid),
+      high: round1(mid + half),
+      measured,
+    }
+  })
+
+  if (granularity === "daily") return daily
+
+  // Weekly: sum daily lows/mids/highs per ISO week (fully-correlated errors,
+  // matching how the forecast band accumulates σ day by day).
+  const byWeek = new Map<number, ConsumptionBucket>()
+  for (const d of daily) {
+    const wk = startOfISOWeek(new Date(d.periodStart)).getTime()
+    const acc = byWeek.get(wk)
+    if (!acc) {
+      byWeek.set(wk, { ...d, periodStart: wk })
+    } else {
+      acc.days += 1
+      acc.low = round1(acc.low + d.low)
+      acc.mid = round1(acc.mid + d.mid)
+      acc.high = round1(acc.high + d.high)
+      acc.measured = acc.measured && d.measured
+    }
+  }
+  return [...byWeek.values()].sort((a, b) => a.periodStart - b.periodStart)
+}
+
 export function computePrediction(
   readings: Reading[],
   capacityLiters: number
@@ -271,15 +453,10 @@ export function computePrediction(
     }
   }
 
-  const oldest = segment[0]
   const newest = segment[segment.length - 1]
 
-  const totalDays = differenceInDays(
-    new Date(newest.recorded_at),
-    new Date(oldest.recorded_at)
-  )
-
-  if (totalDays <= 0) {
+  const model = computeRateModel(sorted)
+  if (model === null) {
     return {
       dailyRateLiters: null,
       runOutDate: null,
@@ -289,29 +466,7 @@ export function computePrediction(
       isSeasonal: false,
     }
   }
-
-  // OLS regression through all readings in the current segment.
-  // More robust than endpoint-to-endpoint when intermediate readings contain noise.
-  const t0 = new Date(oldest.recorded_at)
-  const segXs = segment.map((r) => differenceInDays(new Date(r.recorded_at), t0))
-  const segYs = segment.map((r) => r.level_liters!)
-  const segOls = olsRegression(segXs, segYs)
-
-  // Fall back to endpoint rate if OLS fails or implies a net gain (post-refill noise)
-  const endpointRate = (oldest.level_liters! - newest.level_liters!) / totalDays
-  const recentDailyRate =
-    segOls && segOls.slope < 0 ? -segOls.slope : endpointRate
-
-  if (recentDailyRate <= 0) {
-    return {
-      dailyRateLiters: null,
-      runOutDate: null,
-      daysRemaining: null,
-      forecastPoints: [],
-      hasEnoughData: false,
-      isSeasonal: false,
-    }
-  }
+  const { weights, recentDailyRate, blendedCalibratedRate, rateStdDev } = model
 
   const historicalPoints: ForecastPoint[] = segment.map((r) => ({
     date: new Date(r.recorded_at).getTime(),
@@ -332,8 +487,6 @@ export function computePrediction(
   }
   // Projection always starts from today (or the last reading if it's today)
   const projectionStart = daysSinceLastReading > 0 ? today : newestDate
-
-  const weights = computeMonthlyWeights(sorted)
 
   if (weights === null) {
     // Flat-rate fallback: insufficient seasonal data
@@ -366,42 +519,7 @@ export function computePrediction(
     }
   }
 
-  // ── Seasonal path ─────────────────────────────────────────────────────────
-
-  // Average seasonal weight over the current segment, used to convert the
-  // raw OLS rate into a season-independent calibrated rate (L/day at mean load).
-  const segStart = new Date(oldest.recorded_at)
-  const segEnd = new Date(newest.recorded_at)
-  const avgSegmentWeight = averageWeight(weights, segStart, segEnd)
-  const currentCalibratedRate = recentDailyRate / avgSegmentWeight
-
-  // ── Historical rate analysis ──────────────────────────────────────────────
-
-  const allSegments = getAllConsumptionSegments(sorted)
-  const historicalSegments = allSegments.slice(0, -1) // all complete segments before current
-  const historicalRates = historicalSegments
-    .map((seg) => segmentCalibratedRate(seg, weights))
-    .filter((r): r is number => r !== null && r > 0)
-
-  // ── Blending: trust OLS fully after 90 days, blend with historical mean before ──
-
-  let blendedCalibratedRate = currentCalibratedRate
-  if (historicalRates.length >= 1 && totalDays < 90) {
-    const histMean = historicalRates.reduce((s, r) => s + r, 0) / historicalRates.length
-    const alpha = totalDays / 90
-    blendedCalibratedRate = alpha * currentCalibratedRate + (1 - alpha) * histMean
-  }
-
-  // ── Uncertainty: 1σ from cross-segment rate distribution ─────────────────
-
-  const allRates = [...historicalRates, currentCalibratedRate]
-  let rateStdDev = 0
-  if (allRates.length >= 2) {
-    const mean = allRates.reduce((s, r) => s + r, 0) / allRates.length
-    rateStdDev = Math.sqrt(allRates.reduce((s, r) => s + (r - mean) ** 2, 0) / allRates.length)
-  }
-
-  // ── Forward projection ────────────────────────────────────────────────────
+  // ── Seasonal forward projection ───────────────────────────────────────────
 
   const currentLevel = newest.level_liters!
   const startDate = projectionStart
