@@ -28,7 +28,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground px-1 lg:px-0">
         <AuthProvider isAuthenticated={authed}>
           <AppNav />
-          <main className="flex-1 w-full mx-auto px-2 pb-8 pt-6 max-w-5xl">
+          <main className="flex-1 w-full px-2 pb-8 pt-6 max-w-5xl">
             {children}
           </main>
         </AuthProvider>
