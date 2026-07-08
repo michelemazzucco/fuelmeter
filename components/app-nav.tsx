@@ -1,28 +1,31 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { useAuth } from "@/components/auth-provider"
-import { Plus } from "lucide-react"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-provider";
+import { Plus } from "lucide-react";
 
 const links = [
   { href: "/", label: "DASHBOARD" },
   { href: "/readings", label: "ENTRIES" },
   { href: "/settings", label: "SETTINGS" },
-]
+];
 
 const actionClass =
-  "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-1 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground"
+  "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-1 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground";
 
 export function AppNav() {
-  const pathname = usePathname()
-  const isAuthenticated = useAuth()
+  const pathname = usePathname();
+  const isAuthenticated = useAuth();
 
   return (
     <header className="sticky top-0 z-40 bg-background">
-      <div className="mx-auto flex max-w-5xl items-stretch gap-px px-2">
-        <Link href="/" className="flex items-center pr-2.5 font-bold tracking-wide">
+      <div className="flex max-w-5xl items-stretch gap-px px-2">
+        <Link
+          href="/"
+          className="flex items-center pr-2.5 font-bold tracking-wide"
+        >
           FUELMETER
         </Link>
         <nav className="flex items-stretch gap-px">
@@ -32,7 +35,7 @@ export function AppNav() {
               href={link.href}
               className={cn(
                 "flex items-center px-2 leading-[1em] tracking-wide transition-colors hover:bg-foreground hover:text-background",
-                pathname === link.href && "bg-foreground text-background"
+                pathname === link.href && "bg-foreground text-background",
               )}
             >
               {link.label}
@@ -55,5 +58,5 @@ export function AppNav() {
         </div>
       </div>
     </header>
-  )
+  );
 }
