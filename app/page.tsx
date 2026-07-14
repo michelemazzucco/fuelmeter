@@ -8,7 +8,7 @@ import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
 import { ConsumptionChart } from "@/components/consumption-chart";
-import { ConsumptionRangeChart } from "@/components/consumption-range-chart";
+import { YearlyLevelChart } from "@/components/yearly-level-chart";
 import { TankIllustration } from "@/components/tank-illustration";
 import { format } from "date-fns";
 
@@ -87,25 +87,27 @@ export default function DashboardPage() {
           </div>
         </PaperBox>
 
+        {readings.some((r) => r.level_liters != null) && (
+          <PaperBox label="Year over year">
+            <YearlyLevelChart readings={readings} className="w-full" />
+          </PaperBox>
+        )}
+
         <PaperBox label="Consumption stats">
           {prediction.hasEnoughData ? (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <LeaderRow
-                  label="DAILY AVERAGE"
-                  value={`${prediction.dailyRateLiters ?? "—"} L`}
-                />
-                <LeaderRow
-                  label="WEEKLY AVERAGE"
-                  value={
-                    prediction.dailyRateLiters
-                      ? `${Math.round(prediction.dailyRateLiters * 7 * 10) / 10} L`
-                      : "—"
-                  }
-                />
-                <LeaderRow label="TOTAL READINGS" value={readings.length} />
-              </div>
-              <ConsumptionRangeChart readings={readings} className="w-full" />
+            <div className="space-y-1">
+              <LeaderRow
+                label="DAILY AVERAGE"
+                value={`${prediction.dailyRateLiters ?? "—"} L`}
+              />
+              <LeaderRow
+                label="WEEKLY AVERAGE"
+                value={
+                  prediction.dailyRateLiters
+                    ? `${Math.round(prediction.dailyRateLiters * 7 * 10) / 10} L`
+                    : "—"
+                }
+              />
             </div>
           ) : (
             <p className="uppercase text-muted-foreground">
