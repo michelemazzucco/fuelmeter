@@ -56,7 +56,7 @@ export function LeaderRow({
       <span className="whitespace-nowrap">{label}</span>
       <span
         aria-hidden
-        className="flex-1 -translate-y-[2px] border-b-[0.5px] border-dashed border-foreground"
+        className="flex-1 border-b-[0.5px] border-dashed border-foreground"
       />
       <span className="whitespace-nowrap">{value}</span>
     </div>

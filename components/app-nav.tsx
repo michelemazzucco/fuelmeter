@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/components/auth-provider";
-import { Plus } from "lucide-react";
+import { AddRecord } from "@/components/add-record";
 
 const links = [
   { href: "/", label: "DASHBOARD" },
@@ -13,11 +12,10 @@ const links = [
 ];
 
 const actionClass =
-  "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-1 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground";
+  "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-0.5 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground";
 
 export function AppNav() {
   const pathname = usePathname();
-  const isAuthenticated = useAuth();
 
   return (
     <header className="sticky top-0 z-40 bg-background">
@@ -43,18 +41,7 @@ export function AppNav() {
           ))}
         </nav>
         <div className="ml-auto flex items-stretch">
-          {isAuthenticated ? (
-            <Link href="/readings?add=1" className={actionClass}>
-              <Plus className="h-3.5 w-3.5" />
-              Add reading
-            </Link>
-          ) : (
-            pathname !== "/login" && (
-              <Link href="/login" className={actionClass}>
-                Login
-              </Link>
-            )
-          )}
+          <AddRecord className={actionClass} />
         </div>
       </div>
     </header>

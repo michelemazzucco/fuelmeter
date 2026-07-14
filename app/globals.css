@@ -148,6 +148,12 @@
         font-size: 14px !important;
         line-height: 21px;
     }
+    /* Buttons have fixed compact heights — the global 21px line box would
+     overflow them, so their text sits on a single 1em line. */
+    body button,
+    body button * {
+        line-height: 1em;
+    }
     /* Purely visual annotations (e.g. the caption beside the tank drawing)
      and chart axis values are the exceptions to the single type size. */
     .caption-side,
