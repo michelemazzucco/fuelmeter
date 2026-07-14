@@ -1,17 +1,10 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { Reading } from "@/lib/types"
 import { getReadings, getTankConfig, deleteReading } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { READINGS_CHANGED_EVENT } from "@/components/add-record"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +16,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ReadingForm } from "@/components/reading-form"
 import { LoadingLine } from "@/components/paper"
 import { useAuth } from "@/components/auth-provider"
 import { format } from "date-fns"
@@ -38,27 +30,11 @@ export default function ReadingsPage() {
 }
 
 function ReadingsPageInner() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
   const isAuthenticated = useAuth()
   const [readings, setReadings] = useState<Reading[]>([])
   const [loading, setLoading] = useState(true)
-  const [sheetOpen, setSheetOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [capacity, setCapacity] = useState<number>(1000)
-
-  // The global "Add reading" action in the nav points at /readings?add=1.
-  useEffect(() => {
-    if (isAuthenticated && searchParams.get("add") === "1") setSheetOpen(true)
-  }, [searchParams, isAuthenticated])
-
-  function handleSheetOpenChange(open: boolean) {
-    setSheetOpen(open)
-    if (!open && searchParams.get("add") === "1") {
-      router.replace(pathname)
-    }
-  }
 
   const loadReadings = useCallback(async () => {
     const [readingsData, configData] = await Promise.all([
@@ -72,6 +48,12 @@ function ReadingsPageInner() {
 
   useEffect(() => {
     loadReadings()
+  }, [loadReadings])
+
+  // Refresh when the global "Add record" window saves a new reading.
+  useEffect(() => {
+    window.addEventListener(READINGS_CHANGED_EVENT, loadReadings)
+    return () => window.removeEventListener(READINGS_CHANGED_EVENT, loadReadings)
   }, [loadReadings])
 
   async function handleDelete() {
@@ -88,26 +70,6 @@ function ReadingsPageInner() {
   return (
     <div>
       <h1 className="sr-only">Entries</h1>
-      <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-        <SheetContent className="px-5 py-6">
-          <SheetHeader>
-            <SheetTitle className="uppercase">New reading</SheetTitle>
-            <SheetDescription>
-              Enter the current fuel level from your gauge or dip-stick.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-6">
-            <ReadingForm
-              onSuccess={() => {
-                handleSheetOpenChange(false)
-                loadReadings()
-              }}
-              onCancel={() => handleSheetOpenChange(false)}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {readings.length === 0 ? (
         <p className="uppercase text-muted-foreground">
           No readings yet. Add your first one to get started.

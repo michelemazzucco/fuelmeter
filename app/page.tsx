@@ -5,6 +5,7 @@ import type { Reading, TankConfig } from "@/lib/types";
 import { getReadings, getTankConfig } from "@/lib/actions";
 import { computePrediction } from "@/lib/predictions";
 import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
+import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
 import { ConsumptionChart } from "@/components/consumption-chart";
@@ -35,6 +36,9 @@ export default function DashboardPage() {
       setLoading(false);
     }
     load();
+    // Refresh when the global "Add record" window saves a new reading.
+    window.addEventListener(READINGS_CHANGED_EVENT, load);
+    return () => window.removeEventListener(READINGS_CHANGED_EVENT, load);
   }, []);
 
   if (loading) {

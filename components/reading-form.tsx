@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { addReading } from "@/lib/actions"
 import { cmToLiters } from "@/lib/tank-lookup"
 import { Button } from "@/components/ui/button"
@@ -12,9 +13,10 @@ import { format } from "date-fns"
 interface ReadingFormProps {
   onSuccess: () => void
   onCancel: () => void
+  readOnly?: boolean
 }
 
-export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
+export function ReadingForm({ onSuccess, onCancel, readOnly }: ReadingFormProps) {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
   const [levelCm, setLevelCm] = useState("")
   const [isRefill, setIsRefill] = useState(false)
@@ -24,6 +26,7 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (readOnly) return
     setError(null)
 
     const cmNum = parseFloat(levelCm)
@@ -68,8 +71,15 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
           type="checkbox"
           checked={isRefill}
           onChange={(e) => setIsRefill(e.target.checked)}
-          className="h-4 w-4 rounded border-border"
+          className="peer sr-only"
         />
+        <label
+          htmlFor="is-refill"
+          aria-hidden
+          className="flex size-4 cursor-pointer items-center justify-center bg-muted leading-none text-transparent select-none peer-checked:text-foreground peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-foreground"
+        >
+          ╳
+        </label>
         <Label htmlFor="is-refill">Tank refill</Label>
       </div>
 
@@ -108,13 +118,23 @@ export function ReadingForm({ onSuccess, onCancel }: ReadingFormProps) {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-2 pt-1">
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" className="flex-1" disabled={saving || readOnly}>
           {saving ? "Saving…" : "Add reading"}
         </Button>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
           Cancel
         </Button>
       </div>
+
+      {readOnly && (
+        <p className="uppercase text-muted-foreground">
+          Read-only —{" "}
+          <Link href="/login" className="underline underline-offset-2">
+            login
+          </Link>{" "}
+          to save
+        </p>
+      )}
     </form>
   )
 }
