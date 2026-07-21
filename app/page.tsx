@@ -66,9 +66,9 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-      <div className="space-y-5 lg:col-span-7">
-        <PaperBox label="Estimated run out">
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-4">
+      <div className="contents lg:block lg:space-y-5 lg:col-span-7">
+        <PaperBox label="Estimated run out" className="order-2 lg:order-none">
           <div className="space-y-4">
             <RunoutCard
               runOutDate={prediction.runOutDate}
@@ -92,12 +92,12 @@ export default function DashboardPage() {
         </PaperBox>
 
         {readings.some((r) => r.level_liters != null) && (
-          <PaperBox label="Year over year">
+          <PaperBox label="Year over year" className="order-5 lg:order-none">
             <YearlyLevelChart readings={readings} className="w-full" />
           </PaperBox>
         )}
 
-        <PaperBox label="Consumption stats">
+        <PaperBox label="Consumption stats" className="order-4 lg:order-none">
           {prediction.hasEnoughData ? (
             <div className="space-y-1">
               <LeaderRow
@@ -121,8 +121,8 @@ export default function DashboardPage() {
         </PaperBox>
       </div>
 
-      <div className="flex flex-col gap-5 lg:col-span-5">
-        <PaperBox label="Current fuel level">
+      <div className="contents lg:flex lg:flex-col lg:gap-5 lg:col-span-5">
+        <PaperBox label="Current fuel level" className="order-1 lg:order-none">
           {latest ? (
             <div className="space-y-3">
               {latest.level_liters != null ? (
@@ -158,7 +158,7 @@ export default function DashboardPage() {
         </PaperBox>
 
         {/* Tank illustration */}
-        <section className="relative flex flex-1 items-center justify-center border-[0.5px] border-foreground px-5 py-9">
+        <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
           {levelPercent != null ? (
             <TankIllustration
               percent={levelPercent}
