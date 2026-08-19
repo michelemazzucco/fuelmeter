@@ -13,7 +13,7 @@ const ubuntuMono = Ubuntu_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FuelMeter",
+  title: "Fuelmeter",
   description: "Track and predict your diesel tank level",
 };
 

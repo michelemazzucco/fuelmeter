@@ -1,31 +1,37 @@
-# FuelMeter
+# Fuelmeter
 
 Know how much diesel is left in the tank, and when it'll run out.
 
-## Why it exists
+![The Fuelmeter dashboard](docs/screenshot.png)
 
-Up in the mountains I heat the house and the water with a diesel tank, and "do I
-have enough to make it through winter" used to be a vibe rather than a number. The
-tank has no gauge. You check it with a dip-stick, get a reading in centimetres, and
-then guess.
+## Problem space
 
-So I built FuelMeter. I log the dip-stick reading, it converts to litres off the
+Up in the mountains I heat the house and the water with a diesel tank, and the
+tank has no gauge. You check it with a dip-stick, get a reading in centimetres,
+and then guess whether you'll make it through winter.
+
+So I built Fuelmeter. I log the reading, it converts to litres off the
 manufacturer's calibration table, and it tells me roughly when I'll run out. The
-bit I'm weirdly proud of is the forecast: a flat rate lies, because I burn way more
-in January than in May. So instead of averaging, it learns the seasonal pattern
-from my own history and draws a confidence band around the projection.
+bit I'm weirdly proud of is the forecast: a flat rate lies, because I burn way
+more in January than in May, so it learns the seasonal pattern from my own
+history instead of averaging.
 
 It's deeply boring to anyone but me, and I check it constantly.
 
 ## What it does
 
-- **Log a reading** in centimetres (the raw dip-stick measurement) and mark refills.
-- **Converts cm to litres** against the manufacturer's calibration table
-  (`lib/tank-lookup.ts`, 1–110 cm maps to a full tank of 1564 L), interpolating for
+You log a dip-stick reading in centimetres and mark it as a refill if it was one.
+Everything else is derived from that.
+
+- Centimetres become litres against the manufacturer's calibration table
+  (`lib/tank-lookup.ts`, 1 to 110 cm over a full tank of 1564 L), interpolated for
   decimal values.
-- **Shows the tank state**: a fuel gauge and a consumption chart of your history.
-- **Forecasts the run-out date** with a seasonal model learned from your own usage,
-  not a flat rate, and puts a confidence band around it.
+- The dashboard shows the current level, the estimated run-out date with a
+  confidence band, a year-over-year comparison of the same day across seasons, and
+  daily/weekly consumption averages.
+- Entries lists every reading so you can fix or delete a bad one. Settings holds
+  the tank capacity and the low threshold.
+- The whole thing sits behind a single-user login, since it's my tank.
 
 ## How the forecast works
 
@@ -40,19 +46,14 @@ the projection burns fuel faster in winter and slower in summer instead of assum
 a constant rate. The spread between segments becomes a ±1σ confidence band around
 the forecast line.
 
-For the full model details, see [`CLAUDE.md`](./CLAUDE.md).
-
 ## Tech stack
 
-- **Next.js 16** (App Router) · **React 19**
-- **Tailwind CSS v4** · **shadcn/ui** (base-ui primitives)
-- **SQLite** via **Turso / libSQL** (`@libsql/client`)
-- **Recharts** for charts · **date-fns** for date math
+Next.js 16 on the App Router with React 19, Tailwind v4 and shadcn/ui on base-ui
+primitives, SQLite through Turso/libSQL, Recharts for the charts and date-fns for
+the date maths. Pages are client components calling Server Actions in
+`lib/actions.ts` for every read and write, and the database client is server-only.
 
-Pages are client components that call **Server Actions** (`lib/actions.ts`) for all
-reads and writes. The database client is server-only.
-
-## Getting started
+## Running it
 
 Requires [pnpm](https://pnpm.io/).
 
@@ -60,8 +61,8 @@ Requires [pnpm](https://pnpm.io/).
 # 1. Configure environment
 cp .env.local.example .env.local
 # The DB URL is preset for local dev (TURSO_DATABASE_URL=file:./local.db).
-# Fill in the single-user login: AUTH_USERNAME, AUTH_PASSWORD, and a long
-# random AUTH_SECRET.
+# Fill in AUTH_USERNAME and AUTH_PASSWORD for the login, plus a long random
+# AUTH_SECRET to sign the session cookie. The app throws without them.
 
 # 2. Install dependencies
 pnpm install
@@ -83,9 +84,5 @@ pnpm tsc --noEmit  # type-check only
 pnpm db:reset      # drop tables, replay db/schema.sql, load db/seed.sql
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for architecture notes, the prediction model, and
-production (Turso + Vercel) setup.
-
-## Author
-
-A personal project by [Michele Mazzucco](https://michelemazzucco.it).
+See [`CLAUDE.md`](./CLAUDE.md) for architecture notes, the full prediction model,
+and Turso + Vercel setup.
