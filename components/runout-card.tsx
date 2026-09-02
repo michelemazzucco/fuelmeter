@@ -5,7 +5,6 @@ import { LeaderRow } from "@/components/paper"
 interface RunoutCardProps {
   runOutDate: Date | null
   daysRemaining: number | null
-  dailyRateLiters: number | null
   hasEnoughData: boolean
   thresholdLiters: number
   /** Date the level is forecast to cross the low threshold */
@@ -18,7 +17,6 @@ interface RunoutCardProps {
 export function RunoutCard({
   runOutDate,
   daysRemaining,
-  dailyRateLiters,
   hasEnoughData,
   thresholdLiters,
   thresholdDate,
@@ -46,9 +44,6 @@ export function RunoutCard({
           </span>
         }
       />
-      {dailyRateLiters !== null && (
-        <LeaderRow label="DAILY RATE" value={`${dailyRateLiters} L/DAY`} />
-      )}
       {thresholdDate && (
         <LeaderRow
           label={`LOW THRESHOLD (${thresholdLiters} L)`}

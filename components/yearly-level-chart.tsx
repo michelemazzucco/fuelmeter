@@ -7,11 +7,15 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
-import { addDays, differenceInDays, format, getDayOfYear, startOfDay } from "date-fns"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts"
+import { addDays, differenceInDays, endOfYear, format, getDayOfYear } from "date-fns"
 import { cn } from "@/lib/utils"
 import { LeaderRow } from "@/components/paper"
-import { computeMonthlyWeights } from "@/lib/predictions"
+import {
+  computeDailyHistory,
+  computeTrendModel,
+  projectLevels,
+} from "@/lib/predictions"
 import type { Reading } from "@/lib/types"
 
 interface YearlyLevelChartProps {
@@ -72,74 +76,45 @@ function readingDot(color: string, year: number) {
 }
 
 /**
- * Daily tank level estimated between consecutive readings, sliced per
- * calendar year. `y<year>` holds the litres for that day-of-year; `r<year>`
- * marks days with an actual reading.
+ * `computeDailyHistory` sliced per calendar year for the day-of-year axis,
+ * plus a forecast series running from the last known day to the run-out date,
+ * clipped at 31 December — past that the day-of-year would wrap and draw back
+ * over the same line.
  *
- * Falling intervals distribute the measured drop across days proportionally
- * to the seasonal monthly weights (autumn days burn less of a long gap than
- * winter days), falling back to linear when there isn't enough seasonal
- * history. Rising intervals (refill windows) stay linear — the pre-fill
- * level is unknown.
+ * The forecast is kept out of `byYear` so it never reaches the year stats.
  */
 function computeDailyLevels(readings: Reading[]) {
-  const sorted = readings
-    .filter((r) => r.level_liters != null)
-    .map((r) => ({ date: startOfDay(new Date(r.recorded_at)), liters: r.level_liters! }))
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
+  const trend = computeTrendModel(readings)
+  const history = computeDailyHistory(readings, trend)
 
-  const weights = computeMonthlyWeights(readings)
-
-  // year → dayOfYear → point; reading days win over interpolated boundaries
-  const byYear = new Map<number, Map<number, { liters: number; isReading: boolean }>>()
-  const setPoint = (date: Date, liters: number, isReading: boolean) => {
-    const year = date.getFullYear()
+  const byYear = new Map<number, DayLevels>()
+  for (const point of history) {
+    const year = point.date.getFullYear()
     const days = byYear.get(year) ?? new Map()
-    const day = getDayOfYear(date)
-    const existing = days.get(day)
-    if (!existing || isReading) {
-      days.set(day, { liters, isReading: isReading || existing?.isReading || false })
-    }
+    days.set(getDayOfYear(point.date), { liters: point.liters, isReading: point.isReading })
     byYear.set(year, days)
   }
 
-  if (sorted.length === 1) {
-    setPoint(sorted[0].date, sorted[0].liters, true)
-  }
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i]
-    const b = sorted[i + 1]
-    const span = differenceInDays(b.date, a.date)
-    if (span <= 0) continue
-
-    if (weights && b.liters < a.liters) {
-      const dayWeights: number[] = []
-      for (let d = 0; d < span; d++) {
-        dayWeights.push(weights[addDays(a.date, d).getMonth()])
-      }
-      const totalWeight = dayWeights.reduce((s, w) => s + w, 0)
-      const drop = a.liters - b.liters
-      let cumWeight = 0
-      for (let d = 0; d <= span; d++) {
-        setPoint(
-          addDays(a.date, d),
-          a.liters - (drop * cumWeight) / totalWeight,
-          d === 0 || d === span
-        )
-        if (d < span) cumWeight += dayWeights[d]
-      }
-    } else {
-      for (let d = 0; d <= span; d++) {
-        setPoint(
-          addDays(a.date, d),
-          a.liters + ((b.liters - a.liters) * d) / span,
-          d === 0 || d === span
-        )
-      }
+  let projection: { year: number; days: Map<number, number> } | null = null
+  const last = history[history.length - 1]
+  if (last && trend.calibratedRate != null) {
+    const tailDays = differenceInDays(endOfYear(last.date), last.date)
+    const levels = projectLevels(last.liters, last.date, tailDays, {
+      weights: trend.weights,
+      calibratedRate: trend.calibratedRate,
+    })
+    const days = new Map<number, number>()
+    for (let d = 0; d <= tailDays; d++) {
+      days.set(getDayOfYear(addDays(last.date, d)), levels[d])
+      if (levels[d] <= 0) break
     }
+    projection = { year: last.date.getFullYear(), days }
   }
 
-  return [...byYear.entries()].sort(([a], [b]) => a - b)
+  return {
+    byYear: [...byYear.entries()].sort(([a], [b]) => a - b),
+    projection,
+  }
 }
 
 type DayLevels = Map<number, { liters: number; isReading: boolean }>
@@ -206,8 +181,8 @@ const signed = (v: number, unit: string) =>
   `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v))}${unit}`
 
 export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps) {
-  const { years, chartData, stats } = useMemo(() => {
-    const byYear = computeDailyLevels(readings)
+  const { years, chartData, stats, projectionYear } = useMemo(() => {
+    const { byYear, projection } = computeDailyLevels(readings)
 
     const rows = new Map<number, Record<string, number | boolean>>()
     for (const [year, days] of byYear) {
@@ -218,11 +193,19 @@ export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps)
         rows.set(day, row)
       }
     }
+    if (projection) {
+      for (const [day, liters] of projection.days) {
+        const row = rows.get(day) ?? { day }
+        row[`p${projection.year}`] = Math.round(liters)
+        rows.set(day, row)
+      }
+    }
 
     return {
       years: byYear.map(([year]) => year),
       chartData: [...rows.values()].sort((a, b) => (a.day as number) - (b.day as number)),
       stats: computeYearStats(byYear),
+      projectionYear: projection?.year ?? null,
     }
   }, [readings])
 
@@ -244,13 +227,17 @@ export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps)
   }
 
   const chartConfig = Object.fromEntries(
-    years.map((year) => [
-      `y${year}`,
-      { label: String(year), color: styleForYear(latestYear, year).color },
-    ])
+    years.flatMap((year) => {
+      const entry = { label: String(year), color: styleForYear(latestYear, year).color }
+      return year === projectionYear
+        ? [[`y${year}`, entry], [`p${year}`, entry]]
+        : [[`y${year}`, entry]]
+    })
   ) satisfies ChartConfig
 
   const shown = years.filter((year) => activeYears.has(year))
+  const showForecast = projectionYear !== null && shown.includes(projectionYear)
+  const todayDay = getDayOfYear(new Date())
 
   return (
     <div className={className}>
@@ -328,21 +315,54 @@ export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps)
                   return typeof day === "number" ? dayOfYearLabel(day) : ""
                 }}
                 formatter={(value, name, item) => {
-                  const isReading = item.payload?.[`r${String(name).slice(1)}`]
+                  const key = String(name)
+                  const year = key.slice(1)
+                  const isForecast = key.startsWith("p")
+                  // Today carries both series; show it once, as the measured side.
+                  if (isForecast && item.payload?.[`y${year}`] != null) return null
+                  const suffix = isForecast
+                    ? " · FORECAST"
+                    : item.payload?.[`r${year}`]
+                      ? " · READING"
+                      : " · EST."
                   return (
                     <span className="flex items-center gap-1.5 font-mono">
                       <span
                         className="inline-block h-2 w-2"
                         style={{ background: `var(--color-${name})` }}
                       />
-                      {String(name).slice(1)} · {value} L
-                      {isReading ? " · READING" : " · EST."}
+                      {year} · {value} L{suffix}
                     </span>
                   )
                 }}
               />
             }
           />
+          {showForecast && (
+            <ReferenceLine
+              x={todayDay}
+              stroke="var(--ink)"
+              strokeWidth={0.5}
+              strokeDasharray="1 3"
+              label={{
+                value: "TODAY",
+                position: "insideTopRight",
+                fill: "var(--muted-foreground)",
+              }}
+            />
+          )}
+          {showForecast && (
+            <Line
+              dataKey={`p${projectionYear}`}
+              type="linear"
+              stroke={`var(--color-p${projectionYear})`}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              dot={false}
+              activeDot={{ r: 3 }}
+              isAnimationActive={false}
+            />
+          )}
           {shown.map((year) => {
             const style = styleForYear(latestYear, year)
             return (
@@ -385,6 +405,22 @@ export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps)
             </span>
           )
         })}
+        {showForecast && (
+          <span className="flex items-center gap-1.5 text-xs uppercase text-muted-foreground">
+            <svg width="16" height="3" aria-hidden="true">
+              <line
+                x1="0"
+                y1="1.5"
+                x2="16"
+                y2="1.5"
+                stroke={styleForYear(latestYear, projectionYear).color}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+              />
+            </svg>
+            Forecast
+          </span>
+        )}
       </div>
     </div>
   )

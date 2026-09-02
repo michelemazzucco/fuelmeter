@@ -157,7 +157,7 @@ export function ConsumptionChart({
             strokeDasharray="1 3"
             label={{
               value: "TODAY",
-              position: "insideTopLeft",
+              position: "insideTopRight",
               fill: "var(--muted-foreground)",
             }}
           />

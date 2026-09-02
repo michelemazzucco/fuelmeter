@@ -2,6 +2,7 @@ import {
   differenceInDays,
   addDays,
   addMonths,
+  startOfDay,
   startOfMonth,
 } from "date-fns"
 import type { Reading } from "./types"
@@ -275,6 +276,221 @@ export function computeMonthlyWeights(readings: Reading[]): number[] | null {
   return weights
 }
 
+export type TrendModel = {
+  weights: number[] | null   // seasonal monthly weights; null → flat rate
+  calibratedRate: number     // season-independent L/day; the flat rate when weights is null
+}
+
+/**
+ * Tank level on each day from `startDate` (index 0) through `days`, floored at 0.
+ * Each day burns `calibratedRate × weight[month]`, so the curve bends with the season.
+ */
+export function projectLevels(
+  startLevel: number,
+  startDate: Date,
+  days: number,
+  model: TrendModel
+): number[] {
+  const levels = [startLevel]
+  let level = startLevel
+  for (let d = 0; d < days; d++) {
+    const weight = model.weights ? model.weights[addDays(startDate, d).getMonth()] : 1
+    level = Math.max(0, level - model.calibratedRate * weight)
+    levels.push(level)
+  }
+  return levels
+}
+
+/**
+ * Seasonal weights plus the blended consumption rate, for callers that only need
+ * to age a known level forward. `calibratedRate` is null when the current segment
+ * cannot yield a positive rate; `weights` may still be usable for interpolation.
+ */
+export function computeTrendModel(readings: Reading[]): {
+  weights: number[] | null
+  calibratedRate: number | null
+} {
+  const sorted = readings
+    .filter((r) => r.level_liters != null)
+    .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime())
+
+  const model = computeRateModel(sorted)
+  if (model) {
+    return { weights: model.weights, calibratedRate: model.blendedCalibratedRate }
+  }
+  return { weights: computeMonthlyWeights(sorted), calibratedRate: null }
+}
+
+export type DailyLevel = { date: Date; liters: number; isReading: boolean }
+
+/**
+ * Tank level for every day from the first reading through today.
+ *
+ * Falling intervals distribute the measured drop across days proportionally to
+ * the seasonal monthly weights (a winter day burns more of a long gap than an
+ * autumn one), falling back to linear without enough seasonal history. A rising
+ * interval is a refill: the tank keeps burning along the trend up to the day
+ * before the reading that records it full, then steps up — that reading is the
+ * only day the tank is known to be full, so dating the jump there is the only
+ * defensible reading of the data. Past the last reading the level is aged
+ * forward to today along the same trend.
+ */
+export function computeDailyHistory(
+  readings: Reading[],
+  trend: {
+    weights: number[] | null
+    calibratedRate: number | null
+  } = computeTrendModel(readings)
+): DailyLevel[] {
+  const sorted = readings
+    .filter((r) => r.level_liters != null)
+    .map((r) => ({ date: startOfDay(new Date(r.recorded_at)), liters: r.level_liters! }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+  if (sorted.length === 0) return []
+
+  const { weights, calibratedRate } = trend
+
+  const byDay = new Map<number, DailyLevel>()
+  const setPoint = (date: Date, liters: number, isReading: boolean) => {
+    const existing = byDay.get(date.getTime())
+    if (!existing || isReading) {
+      byDay.set(date.getTime(), {
+        date,
+        liters,
+        isReading: isReading || existing?.isReading || false,
+      })
+    }
+  }
+
+  setPoint(sorted[0].date, sorted[0].liters, true)
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i]
+    const b = sorted[i + 1]
+    const span = differenceInDays(b.date, a.date)
+    if (span <= 0) continue
+
+    if (b.liters > a.liters) {
+      const preFill =
+        calibratedRate != null
+          ? projectLevels(a.liters, a.date, span - 1, { weights, calibratedRate })
+          : (Array(span).fill(a.liters) as number[])
+      for (let d = 0; d < span; d++) {
+        setPoint(addDays(a.date, d), preFill[d], d === 0)
+      }
+      setPoint(b.date, b.liters, true)
+    } else if (weights) {
+      const dayWeights: number[] = []
+      for (let d = 0; d < span; d++) {
+        dayWeights.push(weights[addDays(a.date, d).getMonth()])
+      }
+      const totalWeight = dayWeights.reduce((s, w) => s + w, 0)
+      const drop = a.liters - b.liters
+      let cumWeight = 0
+      for (let d = 0; d <= span; d++) {
+        setPoint(
+          addDays(a.date, d),
+          a.liters - (drop * cumWeight) / totalWeight,
+          d === 0 || d === span
+        )
+        if (d < span) cumWeight += dayWeights[d]
+      }
+    } else {
+      for (let d = 0; d <= span; d++) {
+        setPoint(
+          addDays(a.date, d),
+          a.liters + ((b.liters - a.liters) * d) / span,
+          d === 0 || d === span
+        )
+      }
+    }
+  }
+
+  const last = sorted[sorted.length - 1]
+  const gapDays = differenceInDays(startOfDay(new Date()), last.date)
+  if (calibratedRate != null && gapDays > 0) {
+    const levels = projectLevels(last.liters, last.date, gapDays, { weights, calibratedRate })
+    for (let d = 1; d <= gapDays; d++) {
+      setPoint(addDays(last.date, d), levels[d], false)
+    }
+  }
+
+  return [...byDay.values()].sort((a, b) => a.date.getTime() - b.date.getTime())
+}
+
+export type ConsumptionAverage = {
+  dailyLiters: number
+  minDailyLiters: number | null
+  maxDailyLiters: number | null
+  coveredDays: number
+}
+
+const YEAR_DAYS = 365
+const MIN_COVERAGE_DAYS = 30
+
+/**
+ * Litres burnt in `(start, end]`, with the lightest and heaviest day.
+ *
+ * A refill day is a rise, and the burn hidden underneath it cannot be
+ * recovered, so it contributes nothing and is kept out of the extremes — left
+ * in, it would report a minimum of zero for every cycle. It still counts
+ * towards `days`, which measures elapsed time, not measured time.
+ */
+function consumedBetween(
+  history: DailyLevel[],
+  start: Date,
+  end: Date
+): { liters: number; days: number; minDaily: number | null; maxDaily: number | null } {
+  let liters = 0
+  let days = 0
+  let minDaily: number | null = null
+  let maxDaily: number | null = null
+
+  for (let i = 1; i < history.length; i++) {
+    const day = history[i].date
+    if (day <= start || day > end) continue
+    days++
+
+    const burnt = history[i - 1].liters - history[i].liters
+    if (burnt < 0) continue
+
+    liters += burnt
+    minDaily = minDaily === null ? burnt : Math.min(minDaily, burnt)
+    maxDaily = maxDaily === null ? burnt : Math.max(maxDaily, burnt)
+  }
+
+  return { liters, days, minDaily, maxDaily }
+}
+
+/**
+ * Rolling 12-month consumption rate. Unlike the run-out card's daily rate, this
+ * is a true average over a whole year, so the seasonal weights cancel out.
+ *
+ * Divides by the days actually covered by readings rather than by a flat 365,
+ * so a short history reports the rate it can support instead of one diluted by
+ * months that were never measured; `coveredDays` says how wide that window
+ * really was. Returns null below a month of coverage.
+ */
+export function computeAnnualAverage(readings: Reading[]): ConsumptionAverage | null {
+  const history = computeDailyHistory(readings)
+  if (history.length < 2) return null
+
+  const end = history[history.length - 1].date
+  const { liters, days, minDaily, maxDaily } = consumedBetween(
+    history,
+    addDays(end, -YEAR_DAYS),
+    end
+  )
+  if (days < MIN_COVERAGE_DAYS) return null
+
+  return {
+    dailyLiters: liters / days,
+    minDailyLiters: minDaily,
+    maxDailyLiters: maxDaily,
+    coveredDays: days,
+  }
+}
+
 type RateModel = {
   segment: Reading[]            // current consumption segment, length >= 2
   weights: number[] | null      // seasonal monthly weights; null → flat fallback
@@ -413,14 +629,32 @@ export function computePrediction(
     projected: false,
   }))
 
-  // Extend the actual line to today if the last reading is in the past
-  const today = new Date()
-  const newestDate = new Date(newest.recorded_at)
+  // Age the level from the last reading up to today along the seasonal trend.
+  // Carrying it forward flat would start the forecast from a level that never
+  // happened, pushing the run-out date months too late.
+  const today = startOfDay(new Date())
+  const newestDate = startOfDay(new Date(newest.recorded_at))
   const daysSinceLastReading = differenceInDays(today, newestDate)
+
+  let currentLevel = newest.level_liters!
   if (daysSinceLastReading > 0) {
+    const gapLevels = projectLevels(currentLevel, newestDate, daysSinceLastReading, {
+      weights,
+      calibratedRate: blendedCalibratedRate,
+    })
+    currentLevel = gapLevels[daysSinceLastReading]
+
+    const gapStep = Math.max(1, Math.floor(daysSinceLastReading / 8))
+    for (let d = gapStep; d < daysSinceLastReading; d += gapStep) {
+      historicalPoints.push({
+        date: addDays(newestDate, d).getTime(),
+        level: Math.round(gapLevels[d] * 10) / 10,
+        projected: false,
+      })
+    }
     historicalPoints.push({
       date: today.getTime(),
-      level: newest.level_liters!,
+      level: Math.round(currentLevel * 10) / 10,
       projected: false,
     })
   }
@@ -429,7 +663,6 @@ export function computePrediction(
 
   if (weights === null) {
     // Flat-rate fallback: insufficient seasonal data
-    const currentLevel = newest.level_liters!
     const daysRemaining = Math.floor(currentLevel / recentDailyRate)
     const runOutDate = addDays(projectionStart, daysRemaining)
 
@@ -460,7 +693,6 @@ export function computePrediction(
 
   // ── Seasonal forward projection ───────────────────────────────────────────
 
-  const currentLevel = newest.level_liters!
   const startDate = projectionStart
   const currentMonthWeight = weights[startDate.getMonth()]
 
