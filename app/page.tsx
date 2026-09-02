@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Reading, TankConfig } from "@/lib/types";
 import { getReadings, getTankConfig } from "@/lib/actions";
-import { computePrediction } from "@/lib/predictions";
+import { computeAnnualAverage, computePrediction } from "@/lib/predictions";
 import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
@@ -47,6 +47,7 @@ export default function DashboardPage() {
 
   const latest = readings.length > 0 ? readings[readings.length - 1] : null;
   const prediction = computePrediction(readings, config.capacity_liters);
+  const annual = computeAnnualAverage(readings);
 
   const levelPercent =
     latest?.level_liters != null
@@ -73,7 +74,6 @@ export default function DashboardPage() {
             <RunoutCard
               runOutDate={prediction.runOutDate}
               daysRemaining={prediction.daysRemaining}
-              dailyRateLiters={prediction.dailyRateLiters}
               hasEnoughData={prediction.hasEnoughData}
               thresholdLiters={config.low_threshold_liters}
               thresholdDate={
@@ -97,25 +97,34 @@ export default function DashboardPage() {
           </PaperBox>
         )}
 
-        <PaperBox label="Consumption stats" className="order-4 lg:order-none">
-          {prediction.hasEnoughData ? (
+        <PaperBox
+          label={
+            annual && annual.coveredDays < 365
+              ? `Consumption stats (last ${annual.coveredDays} days)`
+              : "Consumption stats (last 12 months)"
+          }
+          className="order-4 lg:order-none"
+        >
+          {annual ? (
             <div className="space-y-1">
               <LeaderRow
                 label="DAILY AVERAGE"
-                value={`${prediction.dailyRateLiters ?? "—"} L`}
+                value={`${Math.round(annual.dailyLiters * 10) / 10} L`}
               />
+              {annual.minDailyLiters != null && annual.maxDailyLiters != null && (
+                <LeaderRow
+                  label="DAILY MIN / MAX"
+                  value={`${Math.round(annual.minDailyLiters * 10) / 10} – ${Math.round(annual.maxDailyLiters * 10) / 10} L`}
+                />
+              )}
               <LeaderRow
                 label="WEEKLY AVERAGE"
-                value={
-                  prediction.dailyRateLiters
-                    ? `${Math.round(prediction.dailyRateLiters * 7 * 10) / 10} L`
-                    : "—"
-                }
+                value={`${Math.round(annual.dailyLiters * 7 * 10) / 10} L`}
               />
             </div>
           ) : (
             <p className="uppercase text-muted-foreground">
-              Add at least 2 readings to see stats.
+              Add more readings to see a 12-month average.
             </p>
           )}
         </PaperBox>
