@@ -81,6 +81,7 @@ export default function DashboardPage() {
               }
               runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
               runOutLate={latePoint ? new Date(latePoint.date) : null}
+              fromHistory={prediction.fromHistory}
             />
             <ConsumptionChart
               forecastPoints={prediction.forecastPoints}

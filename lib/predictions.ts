@@ -497,17 +497,56 @@ type RateModel = {
   recentDailyRate: number       // raw OLS/endpoint rate of the current segment (L/day)
   blendedCalibratedRate: number // season-independent centre rate; equals recentDailyRate when flat
   rateStdDev: number            // cross-segment 1σ on the calibrated rate; 0 when flat
+  fromHistory: boolean          // rate comes only from past segments (e.g. just after a refill)
+}
+
+function mean(values: number[]): number {
+  return values.reduce((s, v) => s + v, 0) / values.length
+}
+
+function stdDev(values: number[]): number {
+  if (values.length < 2) return 0
+  const m = mean(values)
+  return Math.sqrt(values.reduce((s, v) => s + (v - m) ** 2, 0) / values.length)
+}
+
+/**
+ * Rate model built only from past segments, used when the current segment
+ * cannot yield a rate yet (typically right after a refill).
+ * Returns null when there is no usable historical segment.
+ */
+function historicalRateModel(sorted: Reading[], segment: Reading[]): RateModel | null {
+  const weights = computeMonthlyWeights(sorted)
+  const allSegments = getAllConsumptionSegments(sorted)
+  // A current segment with < 2 readings was never added to allSegments
+  const pastSegments = segment.length < 2 ? allSegments : allSegments.slice(0, -1)
+  const calibrationWeights = weights ?? Array(12).fill(1)
+  const rates = pastSegments
+    .map((seg) => segmentCalibratedRate(seg, calibrationWeights))
+    .filter((r): r is number => r !== null && r > 0)
+  if (rates.length === 0) return null
+
+  const rate = mean(rates)
+  return {
+    segment,
+    weights,
+    recentDailyRate: rate,
+    blendedCalibratedRate: rate,
+    rateStdDev: weights ? stdDev(rates) : 0,
+    fromHistory: true,
+  }
 }
 
 /**
  * Fits the consumption-rate model shared by the forecast and the consumption
  * buckets: current-segment OLS rate, seasonal calibration, historical blending
- * and cross-segment 1σ. Returns null when the current segment cannot yield a
- * positive rate (fewer than 2 readings, zero span, or net level gain).
+ * and cross-segment 1σ. When the current segment cannot yield a positive rate
+ * (fewer than 2 readings, zero span, or net level gain), falls back to the
+ * mean rate of past segments. Returns null when neither is available.
  */
 function computeRateModel(sorted: Reading[]): RateModel | null {
   const segment = getLastConsumptionSegment(sorted)
-  if (segment.length < 2) return null
+  if (segment.length < 2) return historicalRateModel(sorted, segment)
 
   const oldest = segment[0]
   const newest = segment[segment.length - 1]
@@ -516,7 +555,7 @@ function computeRateModel(sorted: Reading[]): RateModel | null {
     new Date(newest.recorded_at),
     new Date(oldest.recorded_at)
   )
-  if (totalDays <= 0) return null
+  if (totalDays <= 0) return historicalRateModel(sorted, segment)
 
   // OLS regression through all readings in the current segment.
   // More robust than endpoint-to-endpoint when intermediate readings contain noise.
@@ -529,7 +568,7 @@ function computeRateModel(sorted: Reading[]): RateModel | null {
   const endpointRate = (oldest.level_liters! - newest.level_liters!) / totalDays
   const recentDailyRate =
     segOls && segOls.slope < 0 ? -segOls.slope : endpointRate
-  if (recentDailyRate <= 0) return null
+  if (recentDailyRate <= 0) return historicalRateModel(sorted, segment)
 
   const weights = computeMonthlyWeights(sorted)
 
@@ -540,6 +579,7 @@ function computeRateModel(sorted: Reading[]): RateModel | null {
       recentDailyRate,
       blendedCalibratedRate: recentDailyRate,
       rateStdDev: 0,
+      fromHistory: false,
     }
   }
 
@@ -570,7 +610,7 @@ function computeRateModel(sorted: Reading[]): RateModel | null {
     rateStdDev = Math.sqrt(allRates.reduce((s, r) => s + (r - mean) ** 2, 0) / allRates.length)
   }
 
-  return { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev }
+  return { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev, fromHistory: false }
 }
 
 export function computePrediction(
@@ -583,6 +623,7 @@ export function computePrediction(
   forecastPoints: ForecastPoint[]
   hasEnoughData: boolean
   isSeasonal: boolean
+  fromHistory: boolean
 } {
   // Only readings with known liters are usable for prediction
   const withLiters = readings.filter((r) => r.level_liters != null)
@@ -591,37 +632,29 @@ export function computePrediction(
     (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
   )
 
-  const segment = getLastConsumptionSegment(sorted)
-
-  if (segment.length < 2) {
-    return {
-      dailyRateLiters: null,
-      runOutDate: null,
-      daysRemaining: null,
-      forecastPoints: segment.map((r) => ({
-        date: new Date(r.recorded_at).getTime(),
-        level: r.level_liters!,
-        projected: false,
-      })),
-      hasEnoughData: false,
-      isSeasonal: false,
-    }
-  }
-
-  const newest = segment[segment.length - 1]
-
   const model = computeRateModel(sorted)
   if (model === null) {
+    const segment = getLastConsumptionSegment(sorted)
     return {
       dailyRateLiters: null,
       runOutDate: null,
       daysRemaining: null,
-      forecastPoints: [],
+      forecastPoints:
+        segment.length < 2
+          ? segment.map((r) => ({
+              date: new Date(r.recorded_at).getTime(),
+              level: r.level_liters!,
+              projected: false,
+            }))
+          : [],
       hasEnoughData: false,
       isSeasonal: false,
+      fromHistory: false,
     }
   }
-  const { weights, recentDailyRate, blendedCalibratedRate, rateStdDev } = model
+  const { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev, fromHistory } =
+    model
+  const newest = segment[segment.length - 1]
 
   const historicalPoints: ForecastPoint[] = segment.map((r) => ({
     date: new Date(r.recorded_at).getTime(),
@@ -688,6 +721,7 @@ export function computePrediction(
       forecastPoints: [...historicalPoints, ...projectedPoints],
       hasEnoughData: true,
       isSeasonal: false,
+      fromHistory,
     }
   }
 
@@ -739,5 +773,6 @@ export function computePrediction(
     forecastPoints: [...historicalPoints, ...projectedPoints],
     hasEnoughData: true,
     isSeasonal: true,
+    fromHistory,
   }
 }

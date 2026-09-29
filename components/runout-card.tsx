@@ -12,6 +12,7 @@ interface RunoutCardProps {
   /** ±1σ run-out window */
   runOutEarly: Date | null
   runOutLate: Date | null
+  fromHistory: boolean
 }
 
 export function RunoutCard({
@@ -22,6 +23,7 @@ export function RunoutCard({
   thresholdDate,
   runOutEarly,
   runOutLate,
+  fromHistory,
 }: RunoutCardProps) {
   if (!hasEnoughData) {
     return (
@@ -56,6 +58,7 @@ export function RunoutCard({
           value={`${format(runOutEarly, "d MMM").toUpperCase()} – ${format(runOutLate, "d MMM").toUpperCase()}`}
         />
       )}
+      {fromHistory && <LeaderRow label="BASED ON" value="PAST CYCLES" />}
     </div>
   )
 }
