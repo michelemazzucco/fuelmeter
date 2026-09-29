@@ -435,6 +435,10 @@ const MIN_COVERAGE_DAYS = 30
  * recovered, so it contributes nothing and is kept out of the extremes — left
  * in, it would report a minimum of zero for every cycle. It still counts
  * towards `days`, which measures elapsed time, not measured time.
+ *
+ * A day with no drop is kept out of the extremes too: two readings at the same
+ * level mean the burn was below the dip-stick's resolution, not zero, and the
+ * next reading's drop still carries it into `liters`.
  */
 function consumedBetween(
   history: DailyLevel[],
@@ -452,7 +456,7 @@ function consumedBetween(
     days++
 
     const burnt = history[i - 1].liters - history[i].liters
-    if (burnt < 0) continue
+    if (burnt <= 0) continue
 
     liters += burnt
     minDaily = minDaily === null ? burnt : Math.min(minDaily, burnt)
