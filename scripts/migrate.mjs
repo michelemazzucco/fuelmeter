@@ -3,7 +3,10 @@
 // (file:./local.db) or your Turso DB in prod (with TURSO_AUTH_TOKEN set).
 //
 //   pnpm db:reset
+//   pnpm db:migrate   # --schema-only: replays db/schema.sql, drops nothing, loads no seed
 //
+// The reset only drops readings and tank_config, so Netatmo tokens and boiler
+// hours survive it.
 import { readFileSync, existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
@@ -34,6 +37,15 @@ if (!url) {
 const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN })
 
 const schema = readFileSync(join(root, "db", "schema.sql"), "utf8")
+
+if (process.argv.includes("--schema-only")) {
+  console.log(`Applying schema at ${url} …`)
+  await db.executeMultiple(schema)
+  const { rows } = await db.execute("select count(*) as n from readings")
+  console.log(`Done. ${rows[0].n} readings untouched.`)
+  process.exit(0)
+}
+
 const seed = readFileSync(join(root, "db", "seed.sql"), "utf8")
 
 console.log(`Resetting database at ${url} …`)

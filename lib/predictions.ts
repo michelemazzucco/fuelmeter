@@ -4,8 +4,13 @@ import {
   addMonths,
   startOfDay,
   startOfMonth,
+  format,
 } from "date-fns"
 import type { Reading } from "./types"
+import type { BoilerContext } from "./heating"
+
+/** Local calendar day, the key of `BoilerContext.hoursByDay`. */
+export const dayKey = (date: Date) => format(date, "yyyy-MM-dd")
 
 export type ForecastPoint = {
   date: number        // Unix timestamp (ms) — used as numeric X axis
@@ -41,7 +46,7 @@ function getLastConsumptionSegment(readings: Reading[]): Reading[] {
  * Each segment begins at a refill reading and ends just before the next refill.
  * Segments with fewer than 2 readings are discarded.
  */
-function getAllConsumptionSegments(sorted: Reading[]): Reading[][] {
+export function getAllConsumptionSegments(sorted: Reading[]): Reading[][] {
   const segments: Reading[][] = []
   let current: Reading[] = []
 
@@ -302,6 +307,62 @@ export function projectLevels(
 }
 
 /**
+ * Like `projectLevels`, but a day Netatmo measured burns `base + k·hours`
+ * from the boiler model in place of the seasonal guess. Without a rate, a day
+ * with no boiler data burns nothing.
+ */
+function ageLevels(
+  startLevel: number,
+  startDate: Date,
+  days: number,
+  trend: { weights: number[] | null; calibratedRate: number | null },
+  boiler?: BoilerContext
+): { levels: number[]; measuredDays: number } {
+  const levels = [startLevel]
+  let level = startLevel
+  let measuredDays = 0
+  for (let d = 0; d < days; d++) {
+    const day = addDays(startDate, d)
+    const hours = boiler?.hoursByDay.get(dayKey(day))
+    let burn: number
+    if (boiler && hours != null) {
+      burn = boiler.model.baseLitersPerDay + boiler.model.litersPerHour * hours
+      measuredDays++
+    } else if (trend.calibratedRate != null) {
+      burn = trend.calibratedRate * (trend.weights ? trend.weights[day.getMonth()] : 1)
+    } else {
+      burn = 0
+    }
+    level = Math.max(0, level - burn)
+    levels.push(level)
+  }
+  return { levels, measuredDays }
+}
+
+/**
+ * Per-day shares of a falling interval's drop: boiler burn when Netatmo covers
+ * every day, else the seasonal weights, else null (linear).
+ */
+function dayShares(
+  start: Date,
+  span: number,
+  weights: number[] | null,
+  boiler?: BoilerContext
+): number[] | null {
+  if (boiler) {
+    const burns: number[] = []
+    for (let d = 0; d < span; d++) {
+      const hours = boiler.hoursByDay.get(dayKey(addDays(start, d)))
+      if (hours == null) break
+      burns.push(boiler.model.baseLitersPerDay + boiler.model.litersPerHour * hours)
+    }
+    if (burns.length === span && burns.some((b) => b > 0)) return burns
+  }
+  if (!weights) return null
+  return Array.from({ length: span }, (_, d) => weights[addDays(start, d).getMonth()])
+}
+
+/**
  * Seasonal weights plus the blended consumption rate, for callers that only need
  * to age a known level forward. `calibratedRate` is null when the current segment
  * cannot yield a positive rate; `weights` may still be usable for interpolation.
@@ -333,14 +394,16 @@ export type DailyLevel = { date: Date; liters: number; isReading: boolean }
  * before the reading that records it full, then steps up — that reading is the
  * only day the tank is known to be full, so dating the jump there is the only
  * defensible reading of the data. Past the last reading the level is aged
- * forward to today along the same trend.
+ * forward to today along the same trend. With boiler data, measured days burn
+ * by boiler hours instead of by month.
  */
 export function computeDailyHistory(
   readings: Reading[],
   trend: {
     weights: number[] | null
     calibratedRate: number | null
-  } = computeTrendModel(readings)
+  } = computeTrendModel(readings),
+  boiler?: BoilerContext
 ): DailyLevel[] {
   const sorted = readings
     .filter((r) => r.level_liters != null)
@@ -370,20 +433,16 @@ export function computeDailyHistory(
     const span = differenceInDays(b.date, a.date)
     if (span <= 0) continue
 
+    const shares = b.liters > a.liters ? null : dayShares(a.date, span, weights, boiler)
+
     if (b.liters > a.liters) {
-      const preFill =
-        calibratedRate != null
-          ? projectLevels(a.liters, a.date, span - 1, { weights, calibratedRate })
-          : (Array(span).fill(a.liters) as number[])
+      const preFill = ageLevels(a.liters, a.date, span - 1, trend, boiler).levels
       for (let d = 0; d < span; d++) {
         setPoint(addDays(a.date, d), preFill[d], d === 0)
       }
       setPoint(b.date, b.liters, true)
-    } else if (weights) {
-      const dayWeights: number[] = []
-      for (let d = 0; d < span; d++) {
-        dayWeights.push(weights[addDays(a.date, d).getMonth()])
-      }
+    } else if (shares) {
+      const dayWeights = shares
       const totalWeight = dayWeights.reduce((s, w) => s + w, 0)
       const drop = a.liters - b.liters
       let cumWeight = 0
@@ -408,8 +467,8 @@ export function computeDailyHistory(
 
   const last = sorted[sorted.length - 1]
   const gapDays = differenceInDays(startOfDay(new Date()), last.date)
-  if (calibratedRate != null && gapDays > 0) {
-    const levels = projectLevels(last.liters, last.date, gapDays, { weights, calibratedRate })
+  if ((calibratedRate != null || boiler) && gapDays > 0) {
+    const { levels } = ageLevels(last.liters, last.date, gapDays, trend, boiler)
     for (let d = 1; d <= gapDays; d++) {
       setPoint(addDays(last.date, d), levels[d], false)
     }
@@ -475,8 +534,11 @@ function consumedBetween(
  * months that were never measured; `coveredDays` says how wide that window
  * really was. Returns null below a month of coverage.
  */
-export function computeAnnualAverage(readings: Reading[]): ConsumptionAverage | null {
-  const history = computeDailyHistory(readings)
+export function computeAnnualAverage(
+  readings: Reading[],
+  boiler?: BoilerContext
+): ConsumptionAverage | null {
+  const history = computeDailyHistory(readings, computeTrendModel(readings), boiler)
   if (history.length < 2) return null
 
   const end = history[history.length - 1].date
@@ -617,10 +679,7 @@ function computeRateModel(sorted: Reading[]): RateModel | null {
   return { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev, fromHistory: false }
 }
 
-export function computePrediction(
-  readings: Reading[],
-  capacityLiters: number
-): {
+export type Prediction = {
   dailyRateLiters: number | null
   runOutDate: Date | null
   daysRemaining: number | null
@@ -628,7 +687,20 @@ export function computePrediction(
   hasEnoughData: boolean
   isSeasonal: boolean
   fromHistory: boolean
-} {
+  /** Set when boiler hours drove the aging from the last reading to today */
+  boilerAdjusted: boolean
+  estimatedLevelToday: number | null
+  litersSinceReading: number | null
+  boilerHoursSinceReading: number | null
+}
+
+const NEAR_TERM_DAYS = 30
+
+export function computePrediction(
+  readings: Reading[],
+  capacityLiters: number,
+  boiler?: BoilerContext
+): Prediction {
   // Only readings with known liters are usable for prediction
   const withLiters = readings.filter((r) => r.level_liters != null)
 
@@ -654,6 +726,10 @@ export function computePrediction(
       hasEnoughData: false,
       isSeasonal: false,
       fromHistory: false,
+      boilerAdjusted: false,
+      estimatedLevelToday: null,
+      litersSinceReading: null,
+      boilerHoursSinceReading: null,
     }
   }
   const { segment, weights, recentDailyRate, blendedCalibratedRate, rateStdDev, fromHistory } =
@@ -674,11 +750,21 @@ export function computePrediction(
   const daysSinceLastReading = differenceInDays(today, newestDate)
 
   let currentLevel = newest.level_liters!
+  let measuredGapDays = 0
+  let boilerHoursSinceReading = 0
   if (daysSinceLastReading > 0) {
-    const gapLevels = projectLevels(currentLevel, newestDate, daysSinceLastReading, {
-      weights,
-      calibratedRate: blendedCalibratedRate,
-    })
+    const aged = ageLevels(
+      currentLevel,
+      newestDate,
+      daysSinceLastReading,
+      { weights, calibratedRate: blendedCalibratedRate },
+      boiler
+    )
+    const gapLevels = aged.levels
+    measuredGapDays = aged.measuredDays
+    for (let d = 0; d < daysSinceLastReading; d++) {
+      boilerHoursSinceReading += boiler?.hoursByDay.get(dayKey(addDays(newestDate, d))) ?? 0
+    }
     currentLevel = gapLevels[daysSinceLastReading]
 
     const gapStep = Math.max(1, Math.floor(daysSinceLastReading / 8))
@@ -697,6 +783,14 @@ export function computePrediction(
   }
   // Projection always starts from today (or the last reading if it's today)
   const projectionStart = daysSinceLastReading > 0 ? today : newestDate
+
+  const boilerAdjusted = measuredGapDays > 0
+  const boilerFields = {
+    boilerAdjusted,
+    estimatedLevelToday: boilerAdjusted ? currentLevel : null,
+    litersSinceReading: boilerAdjusted ? newest.level_liters! - currentLevel : null,
+    boilerHoursSinceReading: boilerAdjusted ? boilerHoursSinceReading : null,
+  }
 
   if (weights === null) {
     // Flat-rate fallback: insufficient seasonal data
@@ -726,13 +820,18 @@ export function computePrediction(
       hasEnoughData: true,
       isSeasonal: false,
       fromHistory,
+      ...boilerFields,
     }
   }
 
   // ── Seasonal forward projection ───────────────────────────────────────────
 
   const startDate = projectionStart
-  const currentMonthWeight = weights[startDate.getMonth()]
+  const correction = boiler?.correction ?? 1
+  // The near-term boiler correction fades linearly into the plain seasonal model
+  const correctionOn = (day: number) =>
+    1 + (correction - 1) * Math.max(0, 1 - day / NEAR_TERM_DAYS)
+  const currentMonthWeight = weights[startDate.getMonth()] * correction
 
   // Step size targets ~12 projected chart points
   const flatDaysEstimate = Math.max(1, Math.floor(currentLevel / recentDailyRate))
@@ -752,7 +851,7 @@ export function computePrediction(
   const MAX_DAYS = 3650 // 10-year safety cap
 
   while (level > 0 && dayCount < MAX_DAYS) {
-    const w = weights[cursor.getMonth()]
+    const w = weights[cursor.getMonth()] * correctionOn(dayCount)
     level -= blendedCalibratedRate * w
     levelLow -= rateLow * w
     levelHigh -= rateHigh * w
@@ -778,5 +877,6 @@ export function computePrediction(
     hasEnoughData: true,
     isSeasonal: true,
     fromHistory,
+    ...boilerFields,
   }
 }

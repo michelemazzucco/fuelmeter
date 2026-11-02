@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:reset": "node scripts/migrate.mjs"
+    "db:reset": "node scripts/migrate.mjs",
+    "db:migrate": "node scripts/migrate.mjs --schema-only",
+    "netatmo:login": "node scripts/netatmo-login.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
