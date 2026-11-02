@@ -8,8 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pnpm dev          # start dev server at localhost:3000
 pnpm build        # production build (type-checks via tsc first)
 pnpm tsc --noEmit # type-check only
-pnpm db:reset     # drop tables, replay db/schema.sql, load db/seed.sql
+pnpm db:reset     # drop readings/tank_config, replay db/schema.sql, load db/seed.sql
                   # targets TURSO_DATABASE_URL (local file in dev, Turso in prod)
+pnpm db:migrate   # replay db/schema.sql only — additive, drops and seeds nothing
+pnpm netatmo:login # one-time Netatmo OAuth login, stores tokens in the DB
 ```
 
 Always use **pnpm**, never npm or yarn.
@@ -34,14 +36,19 @@ Pages are `"use client"` and call **Server Actions** in `lib/actions.ts` (`"use 
   - **Calibrated rate**: raw OLS rate ÷ average seasonal weight of the segment → season-independent L/day. Projection applies `calibratedRate × weight[month]` day-by-day.
   - **Confidence band**: cross-segment std dev of calibrated rates gives `rateStdDev`. Projected `ForecastPoint`s carry optional `levelLow` (pessimistic, +1σ) and `levelHigh` (optimistic, −1σ) fields rendered as faint dashed lines in the chart.
 
+- `lib/netatmo.ts` — server-only Netatmo client: token refresh (rotated refresh token saved in `netatmo_auth`), device discovery via `homesdata` (NATherm1 + its NAPlug relay), daily `sum_boiler_on` via `getmeasure`.
+- `lib/heating.ts` — boiler-hours model, client-safe. `fitBoilerModel` fits `drop = base·days + k·hours` on reading intervals ≥ 90 % covered by Netatmo (fallback: base = calibrated rate × lightest seasonal weight). `nearTermCorrection` = last 14 days' boiler burn ÷ seasonal expectation, clamped to [0.5, 1.5]. `buildBoilerContext` bundles both for the optional `boiler` arg of `computeDailyHistory` / `computeAnnualAverage` / `computePrediction`: measured days burn `base + k·hours`, and the forecast's first 30 days are scaled by the correction, fading to the plain seasonal model. Without the arg, behavior is unchanged.
+
 ### Database schema (`db/schema.sql`)
-SQLite. Two tables:
+SQLite. Four tables:
 - `tank_config` — single row, `capacity_liters` (default 1564) and `low_threshold_liters`.
+- `netatmo_auth` — single row (`id = 1`): Netatmo tokens, discovered device ids, home timezone, `last_sync_at` (last success), `last_attempt_at` (claimed atomically before each run, so failures and concurrent loads retry at most every 30 min).
+- `boiler_daily` — `day` (`yyyy-MM-dd`, home timezone) → `boiler_on_seconds`. Filled by the `syncBoilerHours` server action (called on dashboard load, at most every 6 h; refetches the last 2 days). Read through `getBoilerHours`: daily values only for a logged-in user (they reveal when the house is empty); anonymous viewers get weekly + monthly totals, and `boilerDaysOf` spreads the weeks evenly into days for the model.
 - `readings` — `level_cm` (nullable real, primary dip-stick measurement), `level_liters` (nullable real, always derived via `cmToLiters` — never stored from manual input), `is_refill` (`integer` 0/1, exposed as boolean by `mapReading`), `notes`.
 
 SQLite type notes: ids are `text` (default `lower(hex(randomblob(16)))`); litre/cm columns are `real`; timestamps are ISO `text` (`recorded_at` is supplied by the app, `created_at`/`updated_at` default to `current_timestamp`).
 
-Seed data is in `db/seed.sql` (17 historical readings 2021–2026). After any schema change, run `pnpm db:reset` (locally, and once against prod with the Turso env vars set).
+Seed data is in `db/seed.sql` (17 historical readings 2021–2026). After an additive schema change run `pnpm db:migrate`; `pnpm db:reset` wipes readings, so never run it against prod once real data is there. The reset keeps `netatmo_auth` / `boiler_daily`.
 
 ### Recharts pitfalls
 - **Never wrap Recharts children in a React Fragment** (`<>...</>`). Recharts scans direct children to identify its own components; a Fragment hides them and silently breaks the whole chart. Use individual `{condition && <Line ... />}` expressions instead.
@@ -66,6 +73,7 @@ pnpm dlx shadcn@latest add <component> --yes
 
 ### Environment
 Copy `.env.local.example` → `.env.local`.
+- Netatmo (optional): `NETATMO_CLIENT_ID`, `NETATMO_CLIENT_SECRET` from an app at dev.netatmo.com whose redirect URI is `http://localhost:8787/callback`. Run `pnpm netatmo:login` once: it does the OAuth login in the browser and stores the tokens in `netatmo_auth` (the dev portal's token generator is unreliable). The rotated refresh token then lives there. `NETATMO_REFRESH_TOKEN` is an optional fallback. Without them the dashboard has no Heating box and the forecast is unchanged.
 - Local dev: `TURSO_DATABASE_URL=file:./local.db` (no auth token needed). Run `pnpm db:reset` to create/seed the file.
 - Production (Turso + Vercel):
   1. `pnpm dlx turso db create fuelmeter`, then `turso db tokens create fuelmeter`.

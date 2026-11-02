@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Reading, TankConfig } from "@/lib/types";
-import { getReadings, getTankConfig } from "@/lib/actions";
+import { useEffect, useMemo, useState } from "react";
+import type { BoilerHours, Reading, TankConfig } from "@/lib/types";
+import {
+  getBoilerHours,
+  getReadings,
+  getTankConfig,
+  syncBoilerHours,
+} from "@/lib/actions";
 import { computeAnnualAverage, computePrediction } from "@/lib/predictions";
+import {
+  boilerDaysOf,
+  boilerPeriodsOf,
+  buildBoilerContext,
+} from "@/lib/heating";
+import { HeatingBox } from "@/components/heating-box";
 import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
@@ -23,31 +34,59 @@ const DEFAULT_CONFIG: TankConfig = {
 export default function DashboardPage() {
   const [readings, setReadings] = useState<Reading[]>([]);
   const [config, setConfig] = useState<TankConfig>(DEFAULT_CONFIG);
+  const [boilerHours, setBoilerHours] = useState<BoilerHours>({
+    resolution: "day",
+    days: [],
+  });
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [readingsData, configData] = await Promise.all([
+      const [readingsData, configData, boilerData] = await Promise.all([
         getReadings("asc"),
         getTankConfig(),
+        getBoilerHours(),
       ]);
       setReadings(readingsData);
       if (configData) setConfig(configData);
+      setBoilerHours(boilerData);
       setLoading(false);
     }
-    load();
+    // Render from stored boiler hours first; the Netatmo sync can take a while
+    async function sync() {
+      const result = await syncBoilerHours();
+      setLastSyncAt(result.lastSyncAt);
+      if (result.status === "error") console.warn("Netatmo sync:", result.error);
+      if (result.added > 0) setBoilerHours(await getBoilerHours());
+    }
+    load().then(sync);
     // Refresh when the global "Add record" window saves a new reading.
     window.addEventListener(READINGS_CHANGED_EVENT, load);
     return () => window.removeEventListener(READINGS_CHANGED_EVENT, load);
   }, []);
+
+  const boilerDays = useMemo(() => boilerDaysOf(boilerHours), [boilerHours]);
+  const boilerPeriods = useMemo(
+    () => boilerPeriodsOf(boilerHours),
+    [boilerHours],
+  );
+  const boiler = useMemo(
+    () => buildBoilerContext(readings, boilerDays),
+    [readings, boilerDays],
+  );
 
   if (loading) {
     return <LoadingLine />;
   }
 
   const latest = readings.length > 0 ? readings[readings.length - 1] : null;
-  const prediction = computePrediction(readings, config.capacity_liters);
-  const annual = computeAnnualAverage(readings);
+  const prediction = computePrediction(
+    readings,
+    config.capacity_liters,
+    boiler ?? undefined,
+  );
+  const annual = computeAnnualAverage(readings, boiler ?? undefined);
 
   const levelPercent =
     latest?.level_liters != null
@@ -94,7 +133,11 @@ export default function DashboardPage() {
 
         {readings.some((r) => r.level_liters != null) && (
           <PaperBox label="Year over year" className="order-5 lg:order-none">
-            <YearlyLevelChart readings={readings} className="w-full" />
+            <YearlyLevelChart
+              readings={readings}
+              boiler={boiler ?? undefined}
+              className="w-full"
+            />
           </PaperBox>
         )}
 
@@ -129,6 +172,7 @@ export default function DashboardPage() {
             </p>
           )}
         </PaperBox>
+
       </div>
 
       <div className="contents lg:flex lg:flex-col lg:gap-5 lg:col-span-5">
@@ -156,6 +200,13 @@ export default function DashboardPage() {
                   ) + (latest.notes ? ` · ${latest.notes}` : "")
                 }
               />
+              {prediction.estimatedLevelToday != null &&
+                prediction.litersSinceReading != null && (
+                  <LeaderRow
+                    label="ESTIMATED TODAY"
+                    value={`~${Math.round(prediction.estimatedLevelToday)} L (−${Math.round(prediction.litersSinceReading)} L SINCE READING)`}
+                  />
+                )}
             </div>
           ) : (
             <p className="text-muted-foreground">
@@ -181,6 +232,17 @@ export default function DashboardPage() {
             FIG. 001 - HEAT OIL TANK
           </span>
         </section>
+
+        {boilerDays.length > 0 && (
+          <HeatingBox
+            weeks={boilerPeriods.weeks}
+            months={boilerPeriods.months}
+            boiler={boiler}
+            prediction={prediction}
+            lastSyncAt={lastSyncAt}
+            className="order-6 lg:order-none"
+          />
+        )}
       </div>
     </div>
   );

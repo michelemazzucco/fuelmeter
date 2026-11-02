@@ -17,9 +17,11 @@ import {
   projectLevels,
 } from "@/lib/predictions"
 import type { Reading } from "@/lib/types"
+import type { BoilerContext } from "@/lib/heating"
 
 interface YearlyLevelChartProps {
   readings: Reading[]
+  boiler?: BoilerContext
   className?: string
 }
 
@@ -83,9 +85,9 @@ function readingDot(color: string, year: number) {
  *
  * The forecast is kept out of `byYear` so it never reaches the year stats.
  */
-function computeDailyLevels(readings: Reading[]) {
+function computeDailyLevels(readings: Reading[], boiler?: BoilerContext) {
   const trend = computeTrendModel(readings)
-  const history = computeDailyHistory(readings, trend)
+  const history = computeDailyHistory(readings, trend, boiler)
 
   const byYear = new Map<number, DayLevels>()
   for (const point of history) {
@@ -180,9 +182,9 @@ function computeYearStats(byYear: [number, DayLevels][]): YearStats | null {
 const signed = (v: number, unit: string) =>
   `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v))}${unit}`
 
-export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps) {
+export function YearlyLevelChart({ readings, boiler, className }: YearlyLevelChartProps) {
   const { years, chartData, stats, projectionYear } = useMemo(() => {
-    const { byYear, projection } = computeDailyLevels(readings)
+    const { byYear, projection } = computeDailyLevels(readings, boiler)
 
     const rows = new Map<number, Record<string, number | boolean>>()
     for (const [year, days] of byYear) {
@@ -207,7 +209,7 @@ export function YearlyLevelChart({ readings, className }: YearlyLevelChartProps)
       stats: computeYearStats(byYear),
       projectionYear: projection?.year ?? null,
     }
-  }, [readings])
+  }, [readings, boiler])
 
   const [activeYears, setActiveYears] = useState<Set<number>>(
     () => new Set(years.slice(-2))
