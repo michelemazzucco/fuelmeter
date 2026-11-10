@@ -38,8 +38,7 @@ it("counts the burn since the last refill up to today's estimated level", () => 
   expect(stats.sinceRefill!.liters).toBeCloseTo(1400 - today.level, 0)
 })
 
-it("totals the 12-month window at its daily average", () => {
+it("averages the last 30 days", () => {
   const stats = computeConsumptionStats(readings)!
-  expect(stats.totalLiters).toBeCloseTo(stats.dailyLiters * stats.coveredDays, 6)
   expect(stats.last30DailyLiters).toBeGreaterThan(0)
 })

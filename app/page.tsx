@@ -121,6 +121,7 @@ export default function DashboardPage() {
               runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
               runOutLate={latePoint ? new Date(latePoint.date) : null}
               fromHistory={prediction.fromHistory}
+              sinceRefill={annual?.sinceRefill ?? null}
             />
             <ConsumptionChart
               forecastPoints={prediction.forecastPoints}
@@ -168,16 +169,6 @@ export default function DashboardPage() {
               <LeaderRow
                 label="DAILY AVERAGE, LAST 30 DAYS"
                 value={`${Math.round(annual.last30DailyLiters * 10) / 10} L`}
-              />
-              {annual.sinceRefill && (
-                <LeaderRow
-                  label="SINCE LAST REFILL"
-                  value={`${Math.round(annual.sinceRefill.liters)} L IN ${annual.sinceRefill.days} DAYS`}
-                />
-              )}
-              <LeaderRow
-                label="TOTAL"
-                value={`${Math.round(annual.totalLiters)} L`}
               />
             </div>
           ) : (
