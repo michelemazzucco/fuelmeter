@@ -137,6 +137,7 @@ type YearStats = {
   currentYear: number
   consumedYtd: number
   prevYear: number | null
+  prevYearTotal: number | null
   vsPrevPct: number | null
   levelDiff: number | null
 }
@@ -151,6 +152,7 @@ function computeYearStats(byYear: [number, DayLevels][]): YearStats | null {
     currentYear,
     consumedYtd: consumedThrough(curDays, curLast),
     prevYear: null,
+    prevYearTotal: null,
     vsPrevPct: null,
     levelDiff: null,
   }
@@ -159,6 +161,7 @@ function computeYearStats(byYear: [number, DayLevels][]): YearStats | null {
   if (!prevEntry) return stats
   const [prevYear, prevDays] = prevEntry
   stats.prevYear = prevYear
+  stats.prevYearTotal = consumedThrough(prevDays, Math.max(...prevDays.keys()))
 
   // Consumption compared over the days both years cover
   const through = Math.min(curLast, Math.max(...prevDays.keys()))
@@ -246,18 +249,24 @@ export function YearlyLevelChart({ readings, boiler, className }: YearlyLevelCha
       {stats && (
         <div className="space-y-1 pb-4">
           <LeaderRow
-            label={`CONSUMED IN ${stats.currentYear}`}
+            label="THIS YEAR"
             value={`${Math.round(stats.consumedYtd)} L`}
           />
+          {stats.prevYearTotal != null && (
+            <LeaderRow
+              label="LAST YEAR"
+              value={`${Math.round(stats.prevYearTotal)} L`}
+            />
+          )}
           {stats.vsPrevPct != null && (
             <LeaderRow
-              label={`CONSUMPTION VS ${stats.prevYear} (SAME PERIOD)`}
+              label="USE, SAME PERIOD"
               value={signed(stats.vsPrevPct, "%")}
             />
           )}
           {stats.levelDiff != null && (
             <LeaderRow
-              label={`LEVEL VS ${stats.prevYear} (SAME DAY)`}
+              label="LEVEL, SAME DAY"
               value={signed(stats.levelDiff, " L")}
             />
           )}

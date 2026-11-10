@@ -489,7 +489,6 @@ export type ConsumptionStats = {
   dailyLiters: number
   minDailyLiters: number | null
   maxDailyLiters: number | null
-  totalLiters: number
   coveredDays: number
   last30DailyLiters: number
   sinceRefill: { liters: number; days: number } | null
@@ -576,7 +575,6 @@ export function computeConsumptionStats(
     dailyLiters: liters / days,
     minDailyLiters: minDaily,
     maxDailyLiters: maxDaily,
-    totalLiters: liters,
     coveredDays: days,
     last30DailyLiters: recent.liters / recent.days,
     sinceRefill: sinceRefill && { liters: sinceRefill.liters, days: sinceRefill.days },
