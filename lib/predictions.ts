@@ -7,7 +7,7 @@ import {
   format,
 } from "date-fns"
 import type { Reading } from "./types"
-import type { BoilerContext } from "./heating"
+import { dailyBurn, type BoilerContext } from "./heating"
 
 /** Local calendar day, the key of `BoilerContext.hoursByDay`. */
 export const dayKey = (date: Date) => format(date, "yyyy-MM-dd")
@@ -326,7 +326,7 @@ function ageLevels(
     const hours = boiler?.hoursByDay.get(dayKey(day))
     let burn: number
     if (boiler && hours != null) {
-      burn = boiler.model.baseLitersPerDay + boiler.model.litersPerHour * hours
+      burn = dailyBurn(boiler.model, hours)
       measuredDays++
     } else if (trend.calibratedRate != null) {
       burn = trend.calibratedRate * (trend.weights ? trend.weights[day.getMonth()] : 1)
@@ -340,21 +340,29 @@ function ageLevels(
 }
 
 /**
- * Per-day shares of a falling interval's drop: boiler burn when Netatmo covers
- * every day, else the seasonal weights, else null (linear).
+ * Per-day shares of a falling interval's drop, in litres: a day Netatmo
+ * measured burns by its boiler hours, any other day at the seasonal rate.
+ * Without boiler data the shares are the seasonal weights, else null (linear).
  */
 function dayShares(
   start: Date,
   span: number,
-  weights: number[] | null,
+  trend: { weights: number[] | null; calibratedRate: number | null },
   boiler?: BoilerContext
 ): number[] | null {
+  const { weights, calibratedRate } = trend
   if (boiler) {
     const burns: number[] = []
     for (let d = 0; d < span; d++) {
-      const hours = boiler.hoursByDay.get(dayKey(addDays(start, d)))
-      if (hours == null) break
-      burns.push(boiler.model.baseLitersPerDay + boiler.model.litersPerHour * hours)
+      const day = addDays(start, d)
+      const hours = boiler.hoursByDay.get(dayKey(day))
+      if (hours != null) {
+        burns.push(dailyBurn(boiler.model, hours))
+      } else if (calibratedRate != null) {
+        burns.push(calibratedRate * (weights ? weights[day.getMonth()] : 1))
+      } else {
+        break
+      }
     }
     if (burns.length === span && burns.some((b) => b > 0)) return burns
   }
@@ -411,7 +419,7 @@ export function computeDailyHistory(
     .sort((a, b) => a.date.getTime() - b.date.getTime())
   if (sorted.length === 0) return []
 
-  const { weights, calibratedRate } = trend
+  const { calibratedRate } = trend
 
   const byDay = new Map<number, DailyLevel>()
   const setPoint = (date: Date, liters: number, isReading: boolean) => {
@@ -433,7 +441,7 @@ export function computeDailyHistory(
     const span = differenceInDays(b.date, a.date)
     if (span <= 0) continue
 
-    const shares = b.liters > a.liters ? null : dayShares(a.date, span, weights, boiler)
+    const shares = b.liters > a.liters ? null : dayShares(a.date, span, trend, boiler)
 
     if (b.liters > a.liters) {
       const preFill = ageLevels(a.liters, a.date, span - 1, trend, boiler).levels
@@ -477,15 +485,19 @@ export function computeDailyHistory(
   return [...byDay.values()].sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
-export type ConsumptionAverage = {
+export type ConsumptionStats = {
   dailyLiters: number
   minDailyLiters: number | null
   maxDailyLiters: number | null
+  totalLiters: number
   coveredDays: number
+  last30DailyLiters: number
+  sinceRefill: { liters: number; days: number } | null
 }
 
 const YEAR_DAYS = 365
 const MIN_COVERAGE_DAYS = 30
+const RECENT_DAYS = 30
 
 /**
  * Litres burnt in `(start, end]`, with the lightest and heaviest day.
@@ -533,11 +545,14 @@ function consumedBetween(
  * so a short history reports the rate it can support instead of one diluted by
  * months that were never measured; `coveredDays` says how wide that window
  * really was. Returns null below a month of coverage.
+ *
+ * The last 30 days and the burn since the last refill run up to today, so they
+ * include the level aged forward past the last reading.
  */
-export function computeAnnualAverage(
+export function computeConsumptionStats(
   readings: Reading[],
   boiler?: BoilerContext
-): ConsumptionAverage | null {
+): ConsumptionStats | null {
   const history = computeDailyHistory(readings, computeTrendModel(readings), boiler)
   if (history.length < 2) return null
 
@@ -549,11 +564,22 @@ export function computeAnnualAverage(
   )
   if (days < MIN_COVERAGE_DAYS) return null
 
+  const recent = consumedBetween(history, addDays(end, -RECENT_DAYS), end)
+  const lastRefill = readings
+    .filter((r) => r.is_refill && r.level_liters != null)
+    .map((r) => startOfDay(new Date(r.recorded_at)))
+    .sort((a, b) => a.getTime() - b.getTime())
+    .at(-1)
+  const sinceRefill = lastRefill ? consumedBetween(history, lastRefill, end) : null
+
   return {
     dailyLiters: liters / days,
     minDailyLiters: minDaily,
     maxDailyLiters: maxDaily,
+    totalLiters: liters,
     coveredDays: days,
+    last30DailyLiters: recent.liters / recent.days,
+    sinceRefill: sinceRefill && { liters: sinceRefill.liters, days: sinceRefill.days },
   }
 }
 

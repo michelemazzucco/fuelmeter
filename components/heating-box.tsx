@@ -8,8 +8,8 @@ import type { BoilerPeriod } from "@/lib/types"
 const round1 = (v: number) => Math.round(v * 10) / 10
 const signedPct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v))}%`
 
-const monthHours = (months: BoilerPeriod[], date: Date) =>
-  months.find((m) => m.start === format(date, "yyyy-MM-01"))?.hours ?? null
+const monthOf = (months: BoilerPeriod[], date: Date) =>
+  months.find((m) => m.start === format(date, "yyyy-MM-01")) ?? null
 
 export function HeatingBox({
   weeks,
@@ -28,13 +28,15 @@ export function HeatingBox({
 }) {
   const today = new Date()
   const monthLabel = format(today, "MMM").toUpperCase()
-  const thisMonth = monthHours(months, today)
-  // Monthly totals only, so last year's month is prorated to today's day of the month
+  const thisPeriod = monthOf(months, today)
+  const thisMonth = thisPeriod?.hours ?? null
+  // Monthly totals only, so last year's month is prorated to the days this
+  // month has data for (anonymous totals stop at the last finished week)
   const lastYearDate = new Date(today.getFullYear() - 1, today.getMonth(), 1)
-  const lastYearMonth = monthHours(months, lastYearDate)
+  const lastYearMonth = monthOf(months, lastYearDate)?.hours ?? null
   const lastYear =
-    lastYearMonth != null
-      ? (lastYearMonth * today.getDate()) / getDaysInMonth(lastYearDate)
+    lastYearMonth != null && thisPeriod
+      ? (lastYearMonth * thisPeriod.days) / getDaysInMonth(lastYearDate)
       : null
   const vsLastYear =
     thisMonth != null && lastYear != null && lastYear > 0
@@ -49,6 +51,7 @@ export function HeatingBox({
             label={`BOILER HOURS (${monthLabel})`}
             value={thisMonth != null ? `${Math.round(thisMonth)} H${vsLastYear}` : "—"}
           />
+          {!boiler && <LeaderRow label="LITRES PER BOILER HOUR" value="NOT ENOUGH DATA YET" />}
           {boiler && (
             <>
               <LeaderRow

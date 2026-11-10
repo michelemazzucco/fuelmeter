@@ -3,7 +3,7 @@
 import { cookies } from "next/headers"
 import { db } from "./db"
 import type { BoilerDay, BoilerHours, BoilerSyncStatus, Reading, TankConfig } from "./types"
-import { aggregateBoilerDays } from "./heating"
+import { publicBoilerHours } from "./heating"
 import { fetchBoilerDays, getAuthRow, isNetatmoConfigured } from "./netatmo"
 import {
   SESSION_COOKIE,
@@ -161,7 +161,17 @@ export async function getBoilerHours(): Promise<BoilerHours> {
     days = []
   }
   if (await isAuthenticated()) return { resolution: "day", days }
-  return { resolution: "week", ...aggregateBoilerDays(days) }
+  return { resolution: "week", ...publicBoilerHours(days, await homeToday()) }
+}
+
+async function homeToday(): Promise<string> {
+  let timezone = "UTC"
+  try {
+    timezone = (await getAuthRow())?.timezone ?? timezone
+  } catch {
+    // No netatmo_auth table yet: UTC is close enough to find the current week
+  }
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
 }
 
 /**

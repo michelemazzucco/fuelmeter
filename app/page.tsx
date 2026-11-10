@@ -8,7 +8,7 @@ import {
   getTankConfig,
   syncBoilerHours,
 } from "@/lib/actions";
-import { computeAnnualAverage, computePrediction } from "@/lib/predictions";
+import { computeConsumptionStats, computePrediction } from "@/lib/predictions";
 import {
   boilerDaysOf,
   boilerPeriodsOf,
@@ -86,7 +86,7 @@ export default function DashboardPage() {
     config.capacity_liters,
     boiler ?? undefined,
   );
-  const annual = computeAnnualAverage(readings, boiler ?? undefined);
+  const annual = computeConsumptionStats(readings, boiler ?? undefined);
 
   const levelPercent =
     latest?.level_liters != null
@@ -165,6 +165,20 @@ export default function DashboardPage() {
                 label="WEEKLY AVERAGE"
                 value={`${Math.round(annual.dailyLiters * 7 * 10) / 10} L`}
               />
+              <LeaderRow
+                label="DAILY AVERAGE, LAST 30 DAYS"
+                value={`${Math.round(annual.last30DailyLiters * 10) / 10} L`}
+              />
+              {annual.sinceRefill && (
+                <LeaderRow
+                  label="SINCE LAST REFILL"
+                  value={`${Math.round(annual.sinceRefill.liters)} L IN ${annual.sinceRefill.days} DAYS`}
+                />
+              )}
+              <LeaderRow
+                label="TOTAL"
+                value={`${Math.round(annual.totalLiters)} L`}
+              />
             </div>
           ) : (
             <p className="uppercase text-muted-foreground">
@@ -218,6 +232,17 @@ export default function DashboardPage() {
           )}
         </PaperBox>
 
+        {boilerDays.length > 0 && (
+          <HeatingBox
+            weeks={boilerPeriods.weeks}
+            months={boilerPeriods.months}
+            boiler={boiler}
+            prediction={prediction}
+            lastSyncAt={lastSyncAt}
+            className="order-3 lg:order-none"
+          />
+        )}
+
         {/* Tank illustration */}
         <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
           {levelPercent != null ? (
@@ -232,17 +257,6 @@ export default function DashboardPage() {
             FIG. 001 - HEAT OIL TANK
           </span>
         </section>
-
-        {boilerDays.length > 0 && (
-          <HeatingBox
-            weeks={boilerPeriods.weeks}
-            months={boilerPeriods.months}
-            boiler={boiler}
-            prediction={prediction}
-            lastSyncAt={lastSyncAt}
-            className="order-6 lg:order-none"
-          />
-        )}
       </div>
     </div>
   );

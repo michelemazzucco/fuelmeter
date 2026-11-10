@@ -16,18 +16,35 @@ export type BoilerContext = {
 }
 
 const MIN_COVERAGE = 0.9
+const MIN_COVERED_DAYS = 14
 const MIN_FIT_INTERVALS = 3
+// Below this the estimate of the non-heating litres outweighs the heating litres
+const MIN_FIT_HOURS = 100
 const CORRECTION_WINDOW_DAYS = 14
 const MIN_CORRECTION_DAYS = 10
 
-type Observation = { drop: number; days: number; hours: number }
+type Trend = { weights: number[] | null; calibratedRate: number | null }
+
+type Observation = {
+  drop: number  // litres burnt on the covered days
+  days: number  // covered days
+  hours: number // boiler hours on the covered days
+  full: boolean // Netatmo covered at least 90 % of the interval
+}
 
 /**
- * Reading intervals inside one consumption cycle where Netatmo covered at
- * least 90 % of the days. Missing days are filled with the covered days' mean,
- * so a short API gap does not read as a cold-free day.
+ * Reading intervals inside one consumption cycle that Netatmo covered.
+ *
+ * At 90 % coverage and up, missing days are filled with the covered days' mean,
+ * so a short API gap does not read as a cold-free day. Below that, the
+ * observation keeps only the covered days, at least 14 of them, with the share
+ * of the drop that the seasonal weights give those days.
  */
-function observations(readings: Reading[], hoursByDay: Map<string, number>): Observation[] {
+function observations(
+  readings: Reading[],
+  hoursByDay: Map<string, number>,
+  weights: number[] | null
+): Observation[] {
   const sorted = readings
     .filter((r) => r.level_liters != null)
     .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime())
@@ -42,15 +59,29 @@ function observations(readings: Reading[], hoursByDay: Map<string, number>): Obs
 
       let hours = 0
       let covered = 0
+      let coveredWeight = 0
+      let totalWeight = 0
       for (let d = 0; d < days; d++) {
-        const h = hoursByDay.get(dayKey(addDays(start, d)))
+        const day = addDays(start, d)
+        const weight = weights ? weights[day.getMonth()] : 1
+        totalWeight += weight
+        const h = hoursByDay.get(dayKey(day))
         if (h != null) {
           hours += h
           covered++
+          coveredWeight += weight
         }
       }
-      if (covered / days < MIN_COVERAGE) continue
-      result.push({ drop, days, hours: (hours * days) / covered })
+      if (covered / days >= MIN_COVERAGE) {
+        result.push({ drop, days, hours: (hours * days) / covered, full: true })
+      } else if (covered >= MIN_COVERED_DAYS) {
+        result.push({
+          drop: (drop * coveredWeight) / totalWeight,
+          days: covered,
+          hours,
+          full: false,
+        })
+      }
     }
   }
   return result
@@ -74,22 +105,25 @@ function fitTwoTerm(obs: Observation[]): { base: number; k: number } | null {
 
 /**
  * Litres per boiler hour plus a daily base burn, fitted on reading intervals
- * that Netatmo covers. With fewer than 3 intervals, or a fit that is not
- * physical, the base falls back to the lightest seasonal month (summer is
- * hot water only) and k takes up the rest of the measured drops.
+ * that Netatmo covers in full. With fewer than 3 of those, or a fit that is
+ * not physical, the base falls back to the lightest seasonal month (summer is
+ * hot water only) and k takes up the rest of the measured drops, partly
+ * covered intervals included.
  */
 export function fitBoilerModel(
   readings: Reading[],
   hoursByDay: Map<string, number>,
-  trend: { weights: number[] | null; calibratedRate: number | null }
+  trend: Trend
 ): BoilerModel | null {
-  const obs = observations(readings, hoursByDay)
+  const obs = observations(readings, hoursByDay, trend.weights)
   if (obs.length === 0) return null
 
-  if (obs.length >= MIN_FIT_INTERVALS) {
-    const fit = fitTwoTerm(obs)
+  const full = obs.filter((o) => o.full)
+  const fullHours = full.reduce((s, o) => s + o.hours, 0)
+  if (full.length >= MIN_FIT_INTERVALS && fullHours >= MIN_FIT_HOURS) {
+    const fit = fitTwoTerm(full)
     if (fit && fit.base >= 0 && fit.k > 0) {
-      return { baseLitersPerDay: fit.base, litersPerHour: fit.k, intervals: obs.length, fitted: true }
+      return { baseLitersPerDay: fit.base, litersPerHour: fit.k, intervals: full.length, fitted: true }
     }
   }
 
@@ -97,7 +131,7 @@ export function fitBoilerModel(
   const base = trend.calibratedRate * (trend.weights ? Math.min(...trend.weights) : 0)
   const totalHours = obs.reduce((s, o) => s + o.hours, 0)
   const rest = obs.reduce((s, o) => s + o.drop - base * o.days, 0)
-  if (totalHours <= 0 || rest <= 0) return null
+  if (totalHours < MIN_FIT_HOURS || rest <= 0) return null
   return {
     baseLitersPerDay: base,
     litersPerHour: rest / totalHours,
@@ -117,7 +151,7 @@ export const dailyBurn = (model: BoilerModel, hours: number) =>
 export function nearTermCorrection(
   model: BoilerModel,
   hoursByDay: Map<string, number>,
-  trend: { weights: number[] | null; calibratedRate: number | null },
+  trend: Trend,
   today: Date
 ): number {
   if (trend.calibratedRate == null) return 1
@@ -164,11 +198,23 @@ function sumByPeriod(days: BoilerDay[], periodStart: (date: Date) => Date): Boil
   return [...periods.values()].sort((a, b) => a.start.localeCompare(b.start))
 }
 
+const weekStart = (date: Date) => startOfWeek(date, { weekStartsOn: 1 })
+
 export function aggregateBoilerDays(days: BoilerDay[]) {
   return {
-    weeks: sumByPeriod(days, (date) => startOfWeek(date, { weekStartsOn: 1 })),
+    weeks: sumByPeriod(days, weekStart),
     months: sumByPeriod(days, startOfMonth),
   }
+}
+
+/**
+ * Totals for anonymous viewers. The week in progress is left out: its total
+ * grows with every sync, so watching it would show day by day whether anyone
+ * is heating the house. `today` is `yyyy-MM-dd` in the home timezone.
+ */
+export function publicBoilerHours(days: BoilerDay[], today: string) {
+  const currentWeek = format(weekStart(parseISO(today)), "yyyy-MM-dd")
+  return aggregateBoilerDays(days.filter((d) => d.day < currentWeek))
 }
 
 /**
