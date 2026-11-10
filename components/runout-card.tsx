@@ -13,6 +13,7 @@ interface RunoutCardProps {
   runOutEarly: Date | null
   runOutLate: Date | null
   fromHistory: boolean
+  sinceRefill: { liters: number; days: number } | null
 }
 
 export function RunoutCard({
@@ -24,6 +25,7 @@ export function RunoutCard({
   runOutEarly,
   runOutLate,
   fromHistory,
+  sinceRefill,
 }: RunoutCardProps) {
   if (!hasEnoughData) {
     return (
@@ -56,6 +58,12 @@ export function RunoutCard({
         <LeaderRow
           label="CONFIDENCE ±1σ"
           value={`${format(runOutEarly, "d MMM").toUpperCase()} – ${format(runOutLate, "d MMM").toUpperCase()}`}
+        />
+      )}
+      {sinceRefill && (
+        <LeaderRow
+          label="SINCE LAST REFILL"
+          value={`${Math.round(sinceRefill.liters)} L IN ${sinceRefill.days} DAYS`}
         />
       )}
       {fromHistory && <LeaderRow label="BASED ON" value="PAST CYCLES" />}
