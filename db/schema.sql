@@ -22,3 +22,24 @@ create table if not exists readings (
 );
 
 create index if not exists readings_recorded_at_idx on readings (recorded_at desc);
+
+-- Netatmo API credentials and discovered device ids (single row)
+create table if not exists netatmo_auth (
+  id            integer primary key check (id = 1),
+  access_token  text,
+  refresh_token text not null,
+  expires_at    text,
+  relay_id      text,
+  thermostat_id text,
+  timezone      text,
+  last_sync_at  text,
+  last_attempt_at text,
+  updated_at    text default current_timestamp
+);
+
+-- Daily boiler run time from the Netatmo thermostat (sum_boiler_on)
+create table if not exists boiler_daily (
+  day               text primary key,  -- yyyy-MM-dd in the home timezone
+  boiler_on_seconds integer not null,
+  fetched_at        text default current_timestamp
+);
