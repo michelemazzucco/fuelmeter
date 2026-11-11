@@ -14,7 +14,7 @@ const links = [
 const actionClass =
   "flex items-center gap-1 border-[0.5px] border-foreground bg-primary px-2 py-0.5 leading-[1em] uppercase text-primary-foreground transition-colors hover:bg-background hover:text-foreground";
 
-export function AppNav() {
+export function AppNav({ showMcp }: { showMcp: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -40,7 +40,19 @@ export function AppNav() {
             </Link>
           ))}
         </nav>
-        <div className="ml-auto flex items-stretch">
+        <div className="ml-auto flex items-stretch gap-px">
+          {showMcp && (
+            <Link
+              href="/mcp"
+              className={cn(
+                "flex items-center gap-1.5 px-2 leading-[1em] tracking-wide transition-colors hover:bg-foreground hover:text-background",
+                pathname === "/mcp" && "bg-foreground text-background",
+              )}
+            >
+              <span aria-hidden className="live-square size-[5px] bg-current" />
+              MCP
+            </Link>
+          )}
           <AddRecord className={actionClass} />
         </div>
       </div>

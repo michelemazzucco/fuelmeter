@@ -39,6 +39,7 @@ npx @modelcontextprotocol/inspector
 2. Create a Mastra Cloud project from this repo with project root `mcp/`.
 3. Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (the read-only one) and `MCP_KEY`.
 4. In claude.ai, Settings → Connectors → Add custom connector, URL `https://<project>.mastra.cloud/api/mcp/fuelmeter/mcp`. It then shows up in the phone app too.
+5. Set `MCP_URL` to the same URL in the web app (Vercel). It shows the MCP menu item and the `/mcp` setup page.
 
 The MCP shows the same data as the public dashboard. Daily boiler hours show when the house is empty, so it gives only weekly and monthly totals and leaves out the week in progress, and the model spreads each week evenly over its days, like the dashboard does for anonymous viewers. That is why the endpoint can be public, like the dashboard. Keep this rule if you add tools: nothing in the MCP may show more than an anonymous dashboard viewer sees.
 

@@ -187,6 +187,21 @@
     }
 }
 
+/* Live indicator: a small square that snaps 45° every 1.5s, no easing, like an old UI.
+   A square at 90° looks the same as at 0°, so two snaps make a seamless loop. */
+@keyframes live-tick {
+    to { transform: rotate(90deg); }
+}
+.live-square {
+    animation: live-tick 3s steps(2, end) infinite;
+    will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+    .live-square {
+        animation: none;
+    }
+}
+
 /* Fluid surface shimmer for the tank illustration */
 @keyframes tank-wave {
     0%,
