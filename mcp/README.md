@@ -22,12 +22,12 @@ It imports the models from `../lib` directly, so the numbers are the same as the
 ## Run locally
 
 ```bash
-cp .env.example .env   # set MCP_KEY to something, e.g. openssl rand -hex 32
+cp .env.example .env   # set MCP_KEY to something, e.g. openssl rand -hex 32 (guards Studio)
 pnpm install
 pnpm dev               # http://localhost:4111
 ```
 
-The MCP endpoint is `http://localhost:4111/api/mcp/fuelmeter/mcp?key=<MCP_KEY>`. Every `/api` route answers 401 without the key, Studio included, so call it with the MCP inspector:
+The MCP endpoint is `http://localhost:4111/api/mcp/fuelmeter/mcp`. It is public. Every other `/api` route, Studio included, answers 401 without `?key=<MCP_KEY>` or a Bearer header. To try the tools, use the MCP inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector
@@ -38,8 +38,8 @@ npx @modelcontextprotocol/inspector
 1. Make a read-only Turso token: `turso db tokens create fuelmeter --read-only`.
 2. Create a Mastra Cloud project from this repo with project root `mcp/`.
 3. Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (the read-only one) and `MCP_KEY`.
-4. In claude.ai, Settings → Connectors → Add custom connector, URL `https://<project>.mastra.cloud/api/mcp/fuelmeter/mcp?key=<MCP_KEY>`. It then shows up in the phone app too.
+4. In claude.ai, Settings → Connectors → Add custom connector, URL `https://<project>.mastra.cloud/api/mcp/fuelmeter/mcp`. It then shows up in the phone app too.
 
-The MCP shows the same data as the public dashboard. Daily boiler hours show when the house is empty, so it gives only weekly and monthly totals and leaves out the week in progress, and the model spreads each week evenly over its days, like the dashboard does for anonymous viewers. A leaked URL then shows nothing new, but keep the key private anyway. To rotate it, change `MCP_KEY` and update the connector.
+The MCP shows the same data as the public dashboard. Daily boiler hours show when the house is empty, so it gives only weekly and monthly totals and leaves out the week in progress, and the model spreads each week evenly over its days, like the dashboard does for anonymous viewers. That is why the endpoint can be public, like the dashboard. Keep this rule if you add tools: nothing in the MCP may show more than an anonymous dashboard viewer sees.
 
 The dashboard runs the model in the browser, on home time. The server always sets `TZ` to `HOME_TZ` (default `Europe/Rome`) and overrides the host's own `TZ`, so days, "today" and the run-out date match the dashboard.
