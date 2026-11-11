@@ -46,7 +46,7 @@ Pages are `"use client"` and call **Server Actions** in `lib/actions.ts` (`"use 
 - `lib/rows.ts` — `mapReading` / `mapConfig` (SQLite row → type). Shared by `actions.ts` and the MCP, since a `"use server"` file can only export async functions.
 
 ### MCP server (`mcp/`)
-Separate pnpm package (own lockfile, excluded from the root `tsconfig.json`), deployed on Mastra Cloud with project root `mcp/`. One `MCPServer` with 10 read-only tools that load rows through `mcp/src/mastra/db.ts` and call the pure functions in `lib/` (never copy them: the old `fuelmeter-agent` copy drifted). `lib/` files it imports must stay free of `server-only`, Next and `@/` imports. Every `/api/*` route needs `MCP_KEY` as `?key=` or a Bearer header. `legacy: "stateless"` keeps 2025-revision clients like claude.ai working on `@mastra/mcp` 2.x. Boiler data goes through `publicBoilerHours` + `boilerDaysOf` (the anonymous-viewer view), never daily values, because the key travels in the URL. Tools carry `readOnlyHint` (shared `readOnly` in `context.ts`), and `index.ts` forces `TZ` to `HOME_TZ` (default `Europe/Rome`) because the dashboard computes on browser time. See `mcp/README.md`.
+Separate pnpm package (own lockfile, excluded from the root `tsconfig.json`), deployed on Mastra Cloud with project root `mcp/`. One `MCPServer` with 10 read-only tools that load rows through `mcp/src/mastra/db.ts` and call the pure functions in `lib/` (never copy them: the old `fuelmeter-agent` copy drifted). `lib/` files it imports must stay free of `server-only`, Next and `@/` imports. `/api/mcp/*` is public (linked from the app's MCP menu item and `/mcp` page when `MCP_URL` is set); every other `/api/*` route needs `MCP_KEY` as `?key=` or a Bearer header. `legacy: "stateless"` keeps 2025-revision clients like claude.ai working on `@mastra/mcp` 2.x. Boiler data goes through `publicBoilerHours` + `boilerDaysOf` (the anonymous-viewer view), never daily values, because the endpoint is public: no tool may show more than an anonymous dashboard viewer sees. Tools carry `readOnlyHint` (shared `readOnly` in `context.ts`), and `index.ts` forces `TZ` to `HOME_TZ` (default `Europe/Rome`) because the dashboard computes on browser time. See `mcp/README.md`.
 
 ### Database schema (`db/schema.sql`)
 SQLite. Four tables:
@@ -83,6 +83,7 @@ pnpm dlx shadcn@latest add <component> --yes
 ### Environment
 Copy `.env.local.example` → `.env.local`.
 - Netatmo (optional): `NETATMO_CLIENT_ID`, `NETATMO_CLIENT_SECRET` from an app at dev.netatmo.com whose redirect URI is `http://localhost:8787/callback`. Run `pnpm netatmo:login` once: it does the OAuth login in the browser and stores the tokens in `netatmo_auth` (the dev portal's token generator is unreliable). The rotated refresh token then lives there. `NETATMO_REFRESH_TOKEN` is an optional fallback. Without them the dashboard has no Heating box and the forecast is unchanged.
+- MCP (optional): `MCP_URL` = the public MCP endpoint. Set it to show the MCP menu item and the `/mcp` page; unset, both are hidden (`/mcp` is a 404). The tool list on that page is a copy of `mcp/src/mastra/mcp.ts`, so update both.
 - Local dev: `TURSO_DATABASE_URL=file:./local.db` (no auth token needed). Run `pnpm db:reset` to create/seed the file.
 - Production (Turso + Vercel):
   1. `pnpm dlx turso db create fuelmeter`, then `turso db tokens create fuelmeter`.

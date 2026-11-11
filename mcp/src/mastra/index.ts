@@ -20,8 +20,10 @@ export const mastra = new Mastra({
     middleware: [
       {
         path: "/api/*",
-        // claude.ai connectors cannot send headers, so the key also travels in the URL
+        // The MCP endpoint is public: it serves only what the public dashboard shows.
+        // The key guards the rest (Studio and Mastra's own routes).
         handler: async (c, next) => {
+          if (c.req.path.startsWith("/api/mcp/")) return next()
           const bearer = c.req.header("Authorization")?.replace(/^Bearer /, "")
           if (!keyMatches(c.req.query("key") ?? bearer)) {
             return new Response("Unauthorized", { status: 401 })
