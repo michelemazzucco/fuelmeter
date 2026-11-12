@@ -18,7 +18,7 @@ const tools = [
   ["list_consumption_cycles", "One row per refill cycle with litres, days and L/day"],
   ["get_seasonal_weights", "Monthly weights and the season-independent L/day"],
   ["get_boiler_hours", "Boiler-on hours per week or month"],
-  ["get_boiler_model", "Base L/day without heating and litres per boiler hour"],
+  ["get_boiler_model", "Base L/day without heating and litres per boiler hour (capped at the burner flow)"],
   ["convert_cm_to_liters", "Dip-stick cm to litres"],
 ]
 
