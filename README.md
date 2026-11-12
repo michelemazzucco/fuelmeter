@@ -31,7 +31,12 @@ Everything else is derived from that.
   daily/weekly consumption averages.
 - Entries lists every reading so you can fix or delete a bad one. Settings holds
   the tank capacity and the low threshold.
-- The whole thing sits behind a single-user login, since it's my tank.
+- If a Netatmo thermostat is connected, it also reads how many hours the boiler
+  was on each day, and uses that to sharpen the forecast.
+- Anyone can look at the dashboard, but adding or changing a reading needs the
+  single-user login, since it's my tank.
+- There is an MCP server too, so I can ask Claude about the tank from my phone
+  (more on that below).
 
 ## How the forecast works
 
@@ -46,12 +51,45 @@ the projection burns fuel faster in winter and slower in summer instead of assum
 a constant rate. The spread between segments becomes a ±1σ confidence band around
 the forecast line.
 
+The seasonal weights only know what a normal January looks like, not this one. So
+when Netatmo is connected, the model (`lib/heating.ts`) also fits the litres burnt
+per boiler hour plus a daily base for hot water, and corrects the first 30 days of
+the forecast with what the boiler did in the last two weeks. The litres per hour
+are capped at what the burner can physically burn (about 2.63 L/h on my Riello),
+because the thermostat counts the hours it asks for heat, not the hours the burner
+fires. This part needs 100 boiler hours between two readings before it says
+anything, so for now my Heating box shows "not enough data yet".
+
+## Asking Claude about it
+
+The `mcp/` folder is a small read-only MCP server, built with
+[Mastra](https://mastra.ai). It gives Claude (or Cursor, or any MCP client) 10
+tools over the same data: the tank level, the forecast, the readings, the
+consumption per cycle, the boiler hours. It runs the same code in `lib/` as the
+dashboard, so the two can't disagree on the numbers.
+
+Mine lives at `https://fuelmeter.server.mastra.cloud/api/mcp/fuelmeter/mcp`. Add
+it as a custom connector in Claude and ask things like:
+
+- How much oil is left in the tank?
+- When do I need to order more?
+- How did this winter compare to last year?
+- How many litres does one hour of heating burn?
+
+The endpoint is public on purpose. It shows only what the dashboard shows to
+somebody who is not logged in, and it reads the database with a read-only token.
+The boiler hours come per week or per month and never per day, because the daily
+values would tell you when the house is empty.
+
+Setup and deploy are in [`mcp/README.md`](./mcp/README.md).
+
 ## Tech stack
 
 Next.js 16 on the App Router with React 19, Tailwind v4 and shadcn/ui on base-ui
 primitives, SQLite through Turso/libSQL, Recharts for the charts and date-fns for
 the date maths. Pages are client components calling Server Actions in
 `lib/actions.ts` for every read and write, and the database client is server-only.
+The MCP server is a separate pnpm package on Mastra, deployed on its own.
 
 ## Running it
 
@@ -81,7 +119,10 @@ Other useful commands:
 ```bash
 pnpm build         # production build (type-checks first)
 pnpm tsc --noEmit  # type-check only
+pnpm test          # vitest on the forecast and boiler model
 pnpm db:reset      # drop tables, replay db/schema.sql, load db/seed.sql
+
+cd mcp && pnpm dev # the MCP server at localhost:4111
 ```
 
 See [`CLAUDE.md`](./CLAUDE.md) for architecture notes, the full prediction model,
