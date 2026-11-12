@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { addDays, differenceInDays } from "date-fns"
 import type { Reading } from "./types"
-import { fitBoilerModel, publicBoilerHours, type BoilerContext } from "./heating"
+import { BURNER_LITERS_PER_HOUR, fitBoilerModel, publicBoilerHours, type BoilerContext } from "./heating"
 import { computeDailyHistory, computePrediction, computeTrendModel, dayKey } from "./predictions"
 
 const BASE = 0.8
@@ -194,6 +194,43 @@ describe("fitBoilerModel on summer intervals only", () => {
 
     const model = fitBoilerModel(readings, hours, { weights: null, calibratedRate: 1 })
     expect(model?.fitted ?? false).toBe(false)
+  })
+})
+
+describe("fitBoilerModel with the burner flow limit", () => {
+  it("caps a fitted litres per hour and moves the excess to the base", () => {
+    const readings = simulate(day(2022, 12, 1), history)
+    const halved = new Map(
+      [...hoursBetween([[day(2025, 1, 15), day(2026, 3, 29)]])].map(([d, h]) => [d, h / 2])
+    )
+    const model = fitBoilerModel(readings, halved, computeTrendModel(readings))
+
+    expect(model!.fitted).toBe(true)
+    expect(model!.litersPerHour).toBe(BURNER_LITERS_PER_HOUR)
+    expect(model!.baseLitersPerDay).toBeGreaterThan(BASE + 0.1)
+    expect(model!.baseLitersPerDay).toBeLessThan(BASE + 1)
+  })
+
+  it("caps the fallback litres per hour and keeps the measured drop", () => {
+    const start = day(2027, 1, 1)
+    const hours = new Map<string, number>()
+    for (let d = 0; d < 30; d++) hours.set(dayKey(addDays(start, d)), 4)
+    const at = (date: Date, liters: number, is_refill = false): Reading => ({
+      id: date.toISOString(),
+      recorded_at: date.toISOString(),
+      level_cm: null,
+      level_liters: liters,
+      is_refill,
+      notes: null,
+      created_at: date.toISOString(),
+    })
+    const readings = [at(start, 1500, true), at(addDays(start, 30), 1100)]
+
+    const model = fitBoilerModel(readings, hours, { weights: null, calibratedRate: 1 })
+
+    expect(model!.fitted).toBe(false)
+    expect(model!.litersPerHour).toBe(BURNER_LITERS_PER_HOUR)
+    expect(model!.baseLitersPerDay * 30 + model!.litersPerHour * 120).toBeCloseTo(400, 6)
   })
 })
 
