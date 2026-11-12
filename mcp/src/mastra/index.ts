@@ -20,7 +20,7 @@ export const mastra = new Mastra({
     middleware: [
       {
         path: "/api/*",
-        // claude.ai connectors cannot send headers, so the key also travels in the URL
+        // Some MCP clients cannot send a header, so the key also travels in the URL
         handler: async (c, next) => {
           const bearer = c.req.header("Authorization")?.replace(/^Bearer /, "")
           if (!keyMatches(c.req.query("key") ?? bearer)) {
