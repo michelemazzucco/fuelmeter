@@ -21,6 +21,10 @@ const MIN_FIT_INTERVALS = 3
 // Below this the estimate of the non-heating litres outweighs the heating litres
 const MIN_FIT_HOURS = 100
 const CORRECTION_WINDOW_DAYS = 14
+// Riello INSIEME EVO 25 K: single-stage burner, 26.0 kW heat input, oil at 9.9 kWh/L.
+// Netatmo counts heat-demand hours, and the burner fires for only part of them,
+// so one boiler hour cannot burn more than this.
+export const BURNER_LITERS_PER_HOUR = 26.0 / 9.9
 const MIN_CORRECTION_DAYS = 10
 
 type Trend = { weights: number[] | null; calibratedRate: number | null }
@@ -103,12 +107,20 @@ function fitTwoTerm(obs: Observation[]): { base: number; k: number } | null {
   return { base: (yd * hh - yh * dh) / det, k: (yh * dd - yd * dh) / det }
 }
 
+/** Litres above the burner flow move to the base, so the total over `obs` stays the same. */
+function capLitersPerHour(obs: Observation[], base: number, k: number): { base: number; k: number } {
+  if (k <= BURNER_LITERS_PER_HOUR) return { base, k }
+  const hours = obs.reduce((s, o) => s + o.hours, 0)
+  const days = obs.reduce((s, o) => s + o.days, 0)
+  return { base: base + ((k - BURNER_LITERS_PER_HOUR) * hours) / days, k: BURNER_LITERS_PER_HOUR }
+}
+
 /**
  * Litres per boiler hour plus a daily base burn, fitted on reading intervals
  * that Netatmo covers in full. With fewer than 3 of those, or a fit that is
  * not physical, the base falls back to the lightest seasonal month (summer is
  * hot water only) and k takes up the rest of the measured drops, partly
- * covered intervals included.
+ * covered intervals included. Litres per hour never exceed the burner flow.
  */
 export function fitBoilerModel(
   readings: Reading[],
@@ -121,7 +133,8 @@ export function fitBoilerModel(
   const full = obs.filter((o) => o.full)
   const fullHours = full.reduce((s, o) => s + o.hours, 0)
   if (full.length >= MIN_FIT_INTERVALS && fullHours >= MIN_FIT_HOURS) {
-    const fit = fitTwoTerm(full)
+    const raw = fitTwoTerm(full)
+    const fit = raw && capLitersPerHour(full, raw.base, raw.k)
     if (fit && fit.base >= 0 && fit.k > 0) {
       return { baseLitersPerDay: fit.base, litersPerHour: fit.k, intervals: full.length, fitted: true }
     }
@@ -132,9 +145,10 @@ export function fitBoilerModel(
   const totalHours = obs.reduce((s, o) => s + o.hours, 0)
   const rest = obs.reduce((s, o) => s + o.drop - base * o.days, 0)
   if (totalHours < MIN_FIT_HOURS || rest <= 0) return null
+  const capped = capLitersPerHour(obs, base, rest / totalHours)
   return {
-    baseLitersPerDay: base,
-    litersPerHour: rest / totalHours,
+    baseLitersPerDay: capped.base,
+    litersPerHour: capped.k,
     intervals: obs.length,
     fitted: false,
   }
