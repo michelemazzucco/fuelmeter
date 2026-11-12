@@ -68,18 +68,23 @@ tools over the same data: the tank level, the forecast, the readings, the
 consumption per cycle, the boiler hours. It runs the same code in `lib/` as the
 dashboard, so the two can't disagree on the numbers.
 
-Mine lives at `https://fuelmeter.server.mastra.cloud/api/mcp/fuelmeter/mcp`. Add
-it as a custom connector in Claude and ask things like:
+Mine lives at
+`https://fuelmeter.server.mastra.cloud/api/mcp/fuelmeter/mcp?key=YOUR_KEY`. It
+needs a key, and you can ask me for one. Add the address with the key as a custom
+connector in Claude and ask things like:
 
 - How much oil is left in the tank?
 - When do I need to order more?
 - How did this winter compare to last year?
 - How many litres does one hour of heating burn?
 
-The endpoint is public on purpose. It shows only what the dashboard shows to
-somebody who is not logged in, and it reads the database with a read-only token.
-The boiler hours come per week or per month and never per day, because the daily
-values would tell you when the house is empty.
+The endpoint was public for about a day. Then I thought about who pays when a
+stranger calls it in a loop (me, in Mastra credit and Turso quota), so now it
+wants a key. The key goes in the URL, because Claude's custom connectors can't
+send a header, and a URL can leak. So the tools still show only what the dashboard
+shows to somebody who is not logged in, and they read the database with a
+read-only token. The boiler hours come per week or per month and never per day,
+because the daily values would tell you when the house is empty.
 
 Setup and deploy are in [`mcp/README.md`](./mcp/README.md).
 
