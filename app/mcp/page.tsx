@@ -57,6 +57,10 @@ export default function McpPage() {
         <div className="space-y-2">
           <h3 className="uppercase">Claude</h3>
           <p>Settings → Connectors → Add custom connector, then paste the server URL with your key. It also works in the phone app.</p>
+          <p>
+            To keep the key out of the URL, paste the URL without ?key=, pick No sign-in and add an
+            authorization header with the value Bearer YOUR_KEY.
+          </p>
         </div>
         <div className="space-y-2">
           <h3 className="uppercase">Claude Code</h3>
