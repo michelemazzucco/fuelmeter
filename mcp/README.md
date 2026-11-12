@@ -22,12 +22,12 @@ It imports the models from `../lib` directly, so the numbers are the same as the
 ## Run locally
 
 ```bash
-cp .env.example .env   # MCP_KEY is optional, see below
+cp .env.example .env   # set MCP_KEY to something, e.g. openssl rand -hex 32
 pnpm install
 pnpm dev               # http://localhost:4111
 ```
 
-The MCP endpoint is `http://localhost:4111/api/mcp/fuelmeter/mcp`. It is public. Every other `/api` route, Studio included, answers 401 without `?key=<MCP_KEY>` or a Bearer header. With `MCP_KEY` unset those routes answer 401 to everyone, so set it only when you need them. To try the tools, use the MCP inspector:
+The MCP endpoint is `http://localhost:4111/api/mcp/fuelmeter/mcp?key=<MCP_KEY>`. Every `/api` route, Studio included, answers 401 without the key. Send it as `?key=` or as a Bearer header. With `MCP_KEY` unset every route answers 401 to everyone. To try the tools, use the MCP inspector with that URL:
 
 ```bash
 npx @modelcontextprotocol/inspector
@@ -38,11 +38,11 @@ npx @modelcontextprotocol/inspector
 Deploys go through the CLI. There is no deploy on push.
 
 1. Make a read-only Turso token: `turso db tokens create fuelmeter --read-only`.
-2. Put `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (the read-only one) and `HOME_TZ` in `mcp/.env`. The first deploy uploads this file as the server's env vars. After that, change them with `pnpm exec mastra server env set` or in the dashboard.
-3. `pnpm exec mastra auth login`, then `pnpm exec mastra server deploy` from `mcp/`. `.mastra-project.json` links this folder to the `fuelmeter` project. The deploy warns that `MCP_KEY` is missing, and that is fine.
-4. In claude.ai, Settings → Connectors → Add custom connector, URL `https://fuelmeter.server.mastra.cloud/api/mcp/fuelmeter/mcp`. It then shows up in the phone app too.
-5. Set `MCP_URL` to the same URL in the web app (Vercel). It shows the MCP menu item and the `/mcp` setup page.
+2. Put `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (the read-only one), `MCP_KEY` and `HOME_TZ` in `mcp/.env`. The first deploy uploads this file as the server's env vars. After that, change them with `pnpm exec mastra server env set` or in the dashboard.
+3. `pnpm exec mastra auth login`, then `pnpm exec mastra server deploy` from `mcp/`. `.mastra-project.json` links this folder to the `fuelmeter` project. Set `MCP_KEY` before the deploy, or the endpoint answers 401 to everyone.
+4. In claude.ai, Settings → Connectors → Add custom connector, URL `https://fuelmeter.server.mastra.cloud/api/mcp/fuelmeter/mcp?key=<MCP_KEY>`. It then shows up in the phone app too.
+5. Set `MCP_URL` to the URL without the key in the web app (Vercel). It shows the MCP menu item and the `/mcp` setup page, which gives the address with a `YOUR_KEY` placeholder. The real key never goes in the web app.
 
-The MCP shows the same data as the public dashboard. Daily boiler hours show when the house is empty, so it gives only weekly and monthly totals and leaves out the week in progress, and the model spreads each week evenly over its days, like the dashboard does for anonymous viewers. That is why the endpoint can be public, like the dashboard. Keep this rule if you add tools: nothing in the MCP may show more than an anonymous dashboard viewer sees.
+The endpoint needs the key so that strangers cannot use up the Mastra credit and the Turso quota. The key is not what protects the data, because it travels in a URL and a URL can leak. The MCP shows the same data as the public dashboard. Daily boiler hours show when the house is empty, so it gives only weekly and monthly totals and leaves out the week in progress, and the model spreads each week evenly over its days, like the dashboard does for anonymous viewers. A leaked URL then shows nothing new. Keep this rule if you add tools: nothing in the MCP may show more than an anonymous dashboard viewer sees. To rotate the key, change `MCP_KEY` and update the connector.
 
 The dashboard runs the model in the browser, on home time. The server always sets `TZ` to `HOME_TZ` (default `Europe/Rome`) and overrides the host's own `TZ`, so days, "today" and the run-out date match the dashboard.

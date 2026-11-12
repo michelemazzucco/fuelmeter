@@ -33,7 +33,8 @@ export default function McpPage() {
   const url = process.env.MCP_URL
   if (!url) notFound()
 
-  const cursorConfig = JSON.stringify({ mcpServers: { fuelmeter: { url } } }, null, 2)
+  const keyedUrl = `${url}?key=YOUR_KEY`
+  const cursorConfig = JSON.stringify({ mcpServers: { fuelmeter: { url: keyedUrl } } }, null, 2)
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -45,18 +46,21 @@ export default function McpPage() {
         </p>
       </div>
 
-      <PaperBox label="Server URL">
-        <CopyBlock text={url} />
+      <PaperBox label="Server URL" contentClassName="space-y-2 px-4 pb-4 pt-5">
+        <CopyBlock text={keyedUrl} />
+        <p className="text-muted-foreground">
+          The server needs a key. Ask me for one, then put it in place of YOUR_KEY.
+        </p>
       </PaperBox>
 
       <PaperBox label="Setup" contentClassName="space-y-5 px-4 pb-4 pt-5">
         <div className="space-y-2">
           <h3 className="uppercase">Claude</h3>
-          <p>Settings → Connectors → Add custom connector, then paste the server URL. It also works in the phone app.</p>
+          <p>Settings → Connectors → Add custom connector, then paste the server URL with your key. It also works in the phone app.</p>
         </div>
         <div className="space-y-2">
           <h3 className="uppercase">Claude Code</h3>
-          <CopyBlock text={`claude mcp add --transport http fuelmeter ${url}`} />
+          <CopyBlock text={`claude mcp add --transport http fuelmeter "${keyedUrl}"`} />
         </div>
         <div className="space-y-2">
           <h3 className="uppercase">Cursor</h3>
