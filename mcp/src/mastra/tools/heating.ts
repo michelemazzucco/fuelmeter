@@ -1,5 +1,6 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
+import { BURNER_LITERS_PER_HOUR } from "../../../../lib/heating"
 import { isoDate, loadModelInput, readOnly } from "../context"
 import { loadBoilerHours } from "../db"
 
@@ -35,13 +36,15 @@ export const getBoilerHours = createTool({
 export const getBoilerModel = createTool({
   id: "get_boiler_model",
   description:
-    "Fitted relation between boiler hours and oil burnt: daily burn = baseLitersPerDay (hot water and standby, heating off) + litersPerHour × boiler-on hours. `fitted` is false when the base comes from the lightest seasonal month instead of a regression. nearTermCorrection is the last 14 days' burn ÷ what the season predicts (1 = on season). Null when there is not enough boiler data yet.",
+    "Fitted relation between boiler hours and oil burnt: daily burn = baseLitersPerDay (hot water and standby, heating off) + litersPerHour × boiler-on hours. `fitted` is false when the base comes from the lightest seasonal month instead of a regression. litersPerHour never exceeds burnerLitersPerHour, the burner's real oil flow, because the thermostat counts heat-demand hours and the burner fires for only part of them. When cappedAtBurnerFlow is true, the litres above that limit are in baseLitersPerDay, so the base is then more than hot water and standby. nearTermCorrection is the last 14 days' burn ÷ what the season predicts (1 = on season). Null when there is not enough boiler data yet.",
   mcp: readOnly,
   inputSchema: z.object({}),
   outputSchema: z
     .object({
       baseLitersPerDay: z.number(),
       litersPerHour: z.number(),
+      burnerLitersPerHour: z.number(),
+      cappedAtBurnerFlow: z.boolean(),
       fitted: z.boolean(),
       intervals: z.number(),
       nearTermCorrection: z.number(),
@@ -54,6 +57,8 @@ export const getBoilerModel = createTool({
     return {
       baseLitersPerDay: round3(boiler.model.baseLitersPerDay),
       litersPerHour: round3(boiler.model.litersPerHour),
+      burnerLitersPerHour: round3(BURNER_LITERS_PER_HOUR),
+      cappedAtBurnerFlow: boiler.model.litersPerHour >= BURNER_LITERS_PER_HOUR,
       fitted: boiler.model.fitted,
       intervals: boiler.model.intervals,
       nearTermCorrection: round3(boiler.correction),

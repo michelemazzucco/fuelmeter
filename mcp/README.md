@@ -16,7 +16,7 @@ It imports the models from `../lib` directly, so the numbers are the same as the
 | `list_consumption_cycles` | one row per refill cycle with litres, days and L/day |
 | `get_seasonal_weights` | monthly weights and the season-independent L/day |
 | `get_boiler_hours` | boiler-on hours per week or month, without the week in progress |
-| `get_boiler_model` | base L/day without heating and litres per boiler hour |
+| `get_boiler_model` | base L/day without heating and litres per boiler hour (capped at the burner flow) |
 | `convert_cm_to_liters` | dip-stick cm to litres |
 
 ## Run locally
