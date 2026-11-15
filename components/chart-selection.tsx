@@ -50,8 +50,21 @@ export function useRangeSelection({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onChange(null)
     }
+    // A click outside the chart's box leaves the selection. `click`, not
+    // `pointerdown`: a touch scroll to the tank illustration must keep it.
+    // The year dropdown opens in a portal, outside the box in the DOM.
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Element
+      const box = ref.current?.closest("section")
+      if (box?.contains(target) || target.closest("[data-slot=select-content]")) return
+      onChange(null)
+    }
     window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
+    document.addEventListener("click", onClick, true)
+    return () => {
+      window.removeEventListener("keydown", onKeyDown)
+      document.removeEventListener("click", onClick, true)
+    }
   }, [hasValue, onChange])
 
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
