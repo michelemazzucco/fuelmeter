@@ -20,8 +20,16 @@ import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
 import { ConsumptionChart } from "@/components/consumption-chart";
-import { YearlyLevelChart } from "@/components/yearly-level-chart";
-import { TankIllustration } from "@/components/tank-illustration";
+import {
+  YearlyLevelChart,
+  styleForYear,
+} from "@/components/yearly-level-chart";
+import {
+  TankIllustration,
+  type TankPeriod,
+} from "@/components/tank-illustration";
+import { YearViewProvider, useYearView } from "@/components/year-view";
+import { computeDailyLevels, dayRangeLabel } from "@/lib/yearly-levels";
 import { format } from "date-fns";
 
 const DEFAULT_CONFIG: TankConfig = {
@@ -76,6 +84,11 @@ export default function DashboardPage() {
     [readings, boilerDays],
   );
 
+  const yearlyLevels = useMemo(
+    () => computeDailyLevels(readings, boiler ?? undefined),
+    [readings, boiler],
+  );
+
   if (loading) {
     return <LoadingLine />;
   }
@@ -106,6 +119,7 @@ export default function DashboardPage() {
   );
 
   return (
+    <YearViewProvider levels={yearlyLevels}>
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-4">
       <div className="contents lg:block lg:space-y-5 lg:col-span-7">
         <PaperBox label="Estimated run out" className="order-2 lg:order-none">
@@ -134,11 +148,7 @@ export default function DashboardPage() {
 
         {readings.some((r) => r.level_liters != null) && (
           <PaperBox label="Year over year" className="order-5 lg:order-none">
-            <YearlyLevelChart
-              readings={readings}
-              boiler={boiler ?? undefined}
-              className="w-full"
-            />
+            <YearlyLevelChart className="w-full" />
           </PaperBox>
         )}
 
@@ -234,21 +244,66 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Tank illustration */}
-        <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
-          {levelPercent != null ? (
-            <TankIllustration
-              percent={levelPercent}
-              className="w-full max-w-[300px]"
-            />
-          ) : (
-            <p className="uppercase text-muted-foreground">No level data</p>
-          )}
-          <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground">
-            FIG. 001 - HEAT OIL TANK
-          </span>
-        </section>
+        <TankFigure
+          levelPercent={levelPercent}
+          capacityLiters={config.capacity_liters}
+        />
       </div>
     </div>
+    </YearViewProvider>
+  );
+}
+
+/**
+ * The tank drawing. With a period selected on the year-over-year chart it
+ * shows that period for the latest compared year that has data in it.
+ */
+function TankFigure({
+  levelPercent,
+  capacityLiters,
+}: {
+  levelPercent: number | null;
+  capacityLiters: number;
+}) {
+  const { years, period } = useYearView();
+
+  let tankPeriod: TankPeriod | null = null;
+  const shown = period?.years.find((y) => y.endLiters != null);
+  if (period && shown) {
+    const percentOf = (liters: number) => (liters / capacityLiters) * 100;
+    const latestYear = years[years.length - 1];
+    tankPeriod = {
+      label: `${dayRangeLabel(period.range)} ${shown.year}`,
+      endPercent: percentOf(shown.endLiters!),
+      usedPercent: percentOf(shown.consumed!),
+      marks: period.years
+        .filter((y) => y !== shown && y.endLiters != null)
+        .map((y) => {
+          const style = styleForYear(latestYear, y.year);
+          return {
+            year: y.year,
+            percent: percentOf(y.endLiters!),
+            color: style.color,
+            dash: style.dash,
+          };
+        }),
+    };
+  }
+
+  return (
+    <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
+      {levelPercent != null ? (
+        <TankIllustration
+          percent={levelPercent}
+          period={tankPeriod}
+          className="w-full max-w-[300px]"
+        />
+      ) : (
+        <p className="uppercase text-muted-foreground">No level data</p>
+      )}
+      <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground tabular-nums">
+        FIG. 001 - {tankPeriod ? tankPeriod.label : "HEAT OIL TANK"}
+      </span>
+    </section>
   );
 }
