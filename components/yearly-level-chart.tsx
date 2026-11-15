@@ -166,7 +166,7 @@ function ComparisonRows({ label, years }: { label: string; years: PeriodYear[] }
           label={`${latest.year} VS ${y.year}`}
           value={
             latest.complete && y.complete && y.consumed! > 0
-              ? signed(((latest.consumed! - y.consumed!) / y.consumed!) * 100, "%")
+              ? `${signed(((latest.consumed! - y.consumed!) / y.consumed!) * 100, "%")} (${signed(latest.consumed! - y.consumed!, " L")})`
               : "—"
           }
         />

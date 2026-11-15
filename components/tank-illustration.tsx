@@ -174,29 +174,11 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
           />
         </g>
       )}
-      {/* what the compared year used on top of the hatched band */}
-      {showExtra && (
-        <path
-          d={fluidBodyPath(cyExtraTop, cyBandTop)}
-          fill="var(--shade)"
-          opacity={LIGHT_OPACITY}
-        />
-      )}
-      {showExtra && (
-        <ellipse
-          cx={CX}
-          cy={cyExtraTop}
-          rx={RX}
-          ry={RY}
-          fill="var(--fluid)"
-          opacity={LIGHT_OPACITY}
-        />
-      )}
-      {/* fuel used in the period: hatched wall and top face, from the start level down to the end level */}
+      {/* fuel used in the period: hatched, from the start level down to the end level */}
       {showBand && (
         <path d={fluidBodyPath(cyBandTop, cyBandBottom)} fill={`url(#${hatchId})`} />
       )}
-      {showBand && (
+      {showBand && !showExtra && (
         <ellipse
           cx={CX}
           cy={cyBandTop}
@@ -207,6 +189,36 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
           strokeWidth="0.5"
           vectorEffect="non-scaling-stroke"
         />
+      )}
+      {/* what the compared year used on top: a lighter slab that sits on the hatched band */}
+      {showExtra && (
+        <g>
+          <path d={fluidBodyPath(cyExtraTop, cyBandTop)} fill="var(--background)" />
+          <path
+            d={fluidBodyPath(cyExtraTop, cyBandTop)}
+            fill="var(--shade)"
+            opacity={LIGHT_OPACITY}
+          />
+          <ellipse cx={CX} cy={cyExtraTop} rx={RX} ry={RY} fill="var(--background)" />
+          <ellipse
+            cx={CX}
+            cy={cyExtraTop}
+            rx={RX}
+            ry={RY}
+            fill="var(--fluid)"
+            fillOpacity={LIGHT_OPACITY}
+            stroke="var(--ink)"
+            strokeWidth="0.5"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={frontArcPath(cyBandTop)}
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth="0.5"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
       )}
       {showBand && (
         <path
