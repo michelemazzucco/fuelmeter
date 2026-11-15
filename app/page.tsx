@@ -304,15 +304,6 @@ function RunoutRows({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Two years rarely differ by more than 1–2 % of the tank over the same
-// period, a hairline at the scale of the drawing. Below this height the
-// lighter band is a sign that the years differ, not a measure of it: the
-// litres are in the comparison row.
-const MIN_EXTRA_BAND_PERCENT = 4;
-
-const extraBandPercent = (gapPercent: number) =>
-  gapPercent < 0.05 ? 0 : Math.max(gapPercent, MIN_EXTRA_BAND_PERCENT);
-
 /**
  * The tank drawing. A period of the year-over-year chart shows the latest
  * year: the level at the end of the period with the use hatched above it. A
@@ -345,9 +336,7 @@ function TankFigure({
       levelPercent: percentOf(end),
       bandBottomPercent: percentOf(end),
       bandTopPercent: percentOf(end + Math.min(used, comparable ?? used)),
-      extraTopPercent:
-        percentOf(end + Math.min(used, comparable ?? used)) +
-        extraBandPercent(percentOf(Math.abs(used - (comparable ?? used)))),
+      extraTopPercent: percentOf(end + Math.max(used, comparable ?? used)),
     };
   } else if (forecastPeriod && levelPercent != null) {
     tankPeriod = {
