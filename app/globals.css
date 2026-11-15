@@ -154,10 +154,11 @@
     body button * {
         line-height: 1em;
     }
-    /* Purely visual annotations (e.g. the caption beside the tank drawing)
-     and chart axis values are the exceptions to the single type size. */
+    /* Purely visual annotations (e.g. the caption beside the tank drawing),
+     chart axis values and small tags are the exceptions to the single type size. */
     .caption-side,
-    .recharts-cartesian-axis-tick-value {
+    .recharts-cartesian-axis-tick-value,
+    .small-label {
         font-size: 11px !important;
         line-height: 12px;
     }

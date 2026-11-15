@@ -7,6 +7,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { TodayLabel, todayAnchor } from "@/components/chart-today-label"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts"
 import { addDays, differenceInDays, endOfYear, format, getDayOfYear } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -297,7 +298,7 @@ export function YearlyLevelChart({ readings, boiler, className }: YearlyLevelCha
         </div>
       </div>
       <ChartContainer config={chartConfig} className="h-48 w-full">
-        <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <LineChart data={chartData} margin={{ top: showForecast ? 18 : 8, right: 0, bottom: 0, left: 0 }}>
           <CartesianGrid strokeWidth={0.5} className="stroke-muted" />
           <XAxis
             dataKey="day"
@@ -355,11 +356,7 @@ export function YearlyLevelChart({ readings, boiler, className }: YearlyLevelCha
               stroke="var(--ink)"
               strokeWidth={0.5}
               strokeDasharray="1 3"
-              label={{
-                value: "TODAY",
-                position: "insideTopRight",
-                fill: "var(--muted-foreground)",
-              }}
+              label={<TodayLabel anchor={todayAnchor(todayDay, 1, 366)} />}
             />
           )}
           {showForecast && (

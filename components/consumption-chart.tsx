@@ -16,6 +16,7 @@ import {
 } from "recharts"
 import { format, addMonths, startOfMonth, differenceInCalendarMonths } from "date-fns"
 import type { ForecastPoint } from "@/lib/predictions"
+import { TodayLabel, todayAnchor } from "@/components/chart-today-label"
 
 interface ConsumptionChartProps {
   forecastPoints: ForecastPoint[]
@@ -105,7 +106,7 @@ export function ConsumptionChart({
 
   return (
     <ChartContainer config={chartConfig} className={className ?? "h-56 w-full"}>
-      <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <LineChart data={chartData} margin={{ top: showToday ? 18 : 8, right: 0, bottom: 0, left: 0 }}>
         <CartesianGrid strokeWidth={0.5} className="stroke-muted" />
         <XAxis
           dataKey="date"
@@ -155,11 +156,7 @@ export function ConsumptionChart({
             stroke="var(--ink)"
             strokeWidth={0.5}
             strokeDasharray="1 3"
-            label={{
-              value: "TODAY",
-              position: "insideTopRight",
-              fill: "var(--muted-foreground)",
-            }}
+            label={<TodayLabel anchor={todayAnchor(now, minDate, maxDate)} />}
           />
         )}
         <Line
