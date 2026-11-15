@@ -40,6 +40,8 @@ function fluidBodyPath(cyTop: number, cyBottom = BOTTOM_CY) {
 const frontArcPath = (cy: number) =>
   `M ${CX - RX} ${cy} A ${RX} ${RY} 0 0 0 ${CX + RX} ${cy}`
 
+const BEFORE_PERIOD_OPACITY = 0.35
+
 const FILL_MS = 900
 const FOLLOW_MS = 250
 
@@ -111,6 +113,10 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
   const cyBandTop = fluidSurfaceCy(bandTopPct)
   const cyBandBottom = fluidSurfaceCy(bandBottomPct)
   const showBand = cyBandBottom - cyBandTop > 0.5
+  // Fuel above the band is burned before the period starts: it is drawn
+  // lighter, so the eye lands on the band.
+  const cyFull = showBand ? Math.max(cyS, cyBandTop) : cyS
+  const beforePeriod = cyFull - cyS > 0.5
 
   return (
     <svg
@@ -136,7 +142,14 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
       </defs>
       {/* fluid body */}
       {displayPct > 0.5 && (
-        <path d={fluidBodyPath(cyS)} fill="var(--shade)" />
+        <path d={fluidBodyPath(cyFull)} fill="var(--shade)" />
+      )}
+      {beforePeriod && (
+        <path
+          d={fluidBodyPath(cyS, cyFull)}
+          fill="var(--shade)"
+          opacity={BEFORE_PERIOD_OPACITY}
+        />
       )}
       {/* fluid surface with a subtle wave shimmer */}
       {displayPct > 0.5 && (
@@ -144,7 +157,14 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
           className="tank-wave"
           style={{ transformOrigin: `${CX}px ${cyS}px` }}
         >
-          <ellipse cx={CX} cy={cyS} rx={RX} ry={RY} fill="var(--fluid)" />
+          <ellipse
+            cx={CX}
+            cy={cyS}
+            rx={RX}
+            ry={RY}
+            fill="var(--fluid)"
+            opacity={beforePeriod ? BEFORE_PERIOD_OPACITY : 1}
+          />
         </g>
       )}
       {/* fuel used in the period: hatched wall and top face, from the start level down to the end level */}
