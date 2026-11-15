@@ -19,10 +19,19 @@ import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
-import { ConsumptionChart } from "@/components/consumption-chart";
+import {
+  ConsumptionChart,
+  timeRangeLabel,
+} from "@/components/consumption-chart";
 import { YearlyLevelChart } from "@/components/yearly-level-chart";
-import { TankIllustration } from "@/components/tank-illustration";
+import {
+  TankIllustration,
+  type TankPeriod,
+} from "@/components/tank-illustration";
+import { YearViewProvider, useYearView } from "@/components/year-view";
+import { computeDailyLevels, dayRangeLabel } from "@/lib/yearly-levels";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_CONFIG: TankConfig = {
   id: "",
@@ -76,6 +85,11 @@ export default function DashboardPage() {
     [readings, boilerDays],
   );
 
+  const yearlyLevels = useMemo(
+    () => computeDailyLevels(readings, boiler ?? undefined),
+    [readings, boiler],
+  );
+
   if (loading) {
     return <LoadingLine />;
   }
@@ -106,39 +120,41 @@ export default function DashboardPage() {
   );
 
   return (
+    <YearViewProvider
+      levels={yearlyLevels}
+      forecastPoints={prediction.forecastPoints}
+    >
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-4">
       <div className="contents lg:block lg:space-y-5 lg:col-span-7">
         <PaperBox label="Estimated run out" className="order-2 lg:order-none">
           <div className="space-y-4">
-            <RunoutCard
-              runOutDate={prediction.runOutDate}
-              daysRemaining={prediction.daysRemaining}
-              hasEnoughData={prediction.hasEnoughData}
-              thresholdLiters={config.low_threshold_liters}
-              thresholdDate={
-                thresholdPoint ? new Date(thresholdPoint.date) : null
-              }
-              runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
-              runOutLate={latePoint ? new Date(latePoint.date) : null}
-              fromHistory={prediction.fromHistory}
-              sinceRefill={annual?.sinceRefill ?? null}
-            />
+            <RunoutRows>
+              <RunoutCard
+                runOutDate={prediction.runOutDate}
+                daysRemaining={prediction.daysRemaining}
+                hasEnoughData={prediction.hasEnoughData}
+                thresholdLiters={config.low_threshold_liters}
+                thresholdDate={
+                  thresholdPoint ? new Date(thresholdPoint.date) : null
+                }
+                runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
+                runOutLate={latePoint ? new Date(latePoint.date) : null}
+                fromHistory={prediction.fromHistory}
+                sinceRefill={annual?.sinceRefill ?? null}
+              />
+            </RunoutRows>
             <ConsumptionChart
               forecastPoints={prediction.forecastPoints}
               thresholdLiters={config.low_threshold_liters}
               capacityLiters={config.capacity_liters}
-              className="h-64 w-full pt-2"
+              className="h-64 w-full"
             />
           </div>
         </PaperBox>
 
         {readings.some((r) => r.level_liters != null) && (
           <PaperBox label="Year over year" className="order-5 lg:order-none">
-            <YearlyLevelChart
-              readings={readings}
-              boiler={boiler ?? undefined}
-              className="w-full"
-            />
+            <YearlyLevelChart className="w-full" />
           </PaperBox>
         )}
 
@@ -223,6 +239,12 @@ export default function DashboardPage() {
           )}
         </PaperBox>
 
+        <TankFigure
+          levelPercent={levelPercent}
+          todayLiters={prediction.estimatedLevelToday}
+          capacityLiters={config.capacity_liters}
+        />
+
         {boilerDays.length > 0 && (
           <HeatingBox
             weeks={boilerPeriods.weeks}
@@ -233,22 +255,115 @@ export default function DashboardPage() {
             className="order-3 lg:order-none"
           />
         )}
-
-        {/* Tank illustration */}
-        <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
-          {levelPercent != null ? (
-            <TankIllustration
-              percent={levelPercent}
-              className="w-full max-w-[300px]"
-            />
-          ) : (
-            <p className="uppercase text-muted-foreground">No level data</p>
-          )}
-          <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground">
-            FIG. 001 - HEAT OIL TANK
-          </span>
-        </section>
       </div>
     </div>
+    </YearViewProvider>
+  );
+}
+
+const oneDecimal = (v: number) => `${Math.round(v * 10) / 10} L`;
+
+/**
+ * The run-out rows, replaced by the selected period of the run-out chart.
+ * The two sets share one grid cell, so the box keeps the height of the taller
+ * set and the chart does not move under the pointer when a drag swaps them.
+ */
+function RunoutRows({ children }: { children: React.ReactNode }) {
+  const { forecastPeriod: period } = useYearView();
+  const cell = "col-start-1 row-start-1";
+
+  return (
+    <div
+      className="grid"
+      aria-live="polite"
+      style={{ minHeight: "calc(4lh + 0.75rem)" }}
+    >
+      <div className={cn(cell, period && "invisible")} aria-hidden={!!period}>
+        {children}
+      </div>
+      {period && (
+        <div className={cn(cell, "space-y-1 tabular-nums")}>
+          <LeaderRow
+            label={`${period.estimated ? "ESTIMATED USE" : "USED"}, ${timeRangeLabel(period.range)}`}
+            value={`${Math.round(period.consumed)} L`}
+          />
+          <LeaderRow
+            label="DAILY AVERAGE"
+            value={
+              period.dailyLiters != null ? oneDecimal(period.dailyLiters) : "—"
+            }
+          />
+          <LeaderRow
+            label="LEVEL, START → END"
+            value={`${Math.round(period.startLiters)} → ${Math.round(period.endLiters)} L`}
+          />
+          <LeaderRow label="DAYS" value={period.days} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The tank drawing. A period of the year-over-year chart shows the latest
+ * year: the level at the end of the period with the use hatched above it. A
+ * period of the run-out chart shows today's level, with the use hatched where
+ * it is in the tank.
+ */
+function TankFigure({
+  levelPercent,
+  todayLiters,
+  capacityLiters,
+}: {
+  levelPercent: number | null;
+  todayLiters: number | null;
+  capacityLiters: number;
+}) {
+  const { period, forecastPeriod } = useYearView();
+  const percentOf = (liters: number) => (liters / capacityLiters) * 100;
+
+  let tankPeriod: TankPeriod | null = null;
+  const [latest, other] = period?.years ?? [];
+  if (period && latest?.endLiters != null) {
+    const end = latest.endLiters;
+    const used = latest.consumed!;
+    // With a compared year over the same full range, the hatch is the use the
+    // two years share and the lighter band is what one of them used on top.
+    const comparable =
+      latest.complete && other?.complete ? other.consumed! : null;
+    tankPeriod = {
+      label: `${dayRangeLabel(period.range)} ${latest.year}`,
+      levelPercent: percentOf(end),
+      bandBottomPercent: percentOf(end),
+      bandTopPercent: percentOf(end + Math.min(used, comparable ?? used)),
+      extraTopPercent: percentOf(end + Math.max(used, comparable ?? used)),
+    };
+  } else if (forecastPeriod && levelPercent != null) {
+    tankPeriod = {
+      label: timeRangeLabel(forecastPeriod.range),
+      levelPercent:
+        todayLiters != null ? percentOf(todayLiters) : levelPercent,
+      bandTopPercent: percentOf(
+        forecastPeriod.endLiters + forecastPeriod.consumed,
+      ),
+      bandBottomPercent: percentOf(forecastPeriod.endLiters),
+    };
+  }
+
+  return (
+    <section className="relative order-3 flex items-center justify-center border-[0.5px] border-foreground px-5 py-9 lg:order-none lg:flex-1">
+      {levelPercent != null ? (
+        <TankIllustration
+          percent={levelPercent}
+          period={tankPeriod}
+          className="w-full max-w-[300px]"
+        />
+      ) : (
+        <p className="uppercase text-muted-foreground">No level data</p>
+      )}
+      <span className="caption-side absolute right-0 bottom-8 translate-x-1/2 rotate-180 [writing-mode:vertical-rl] bg-background py-1 tracking-wide text-muted-foreground tabular-nums">
+        FIG. 001 - {tankPeriod ? tankPeriod.label : "HEAT OIL TANK"}
+      </span>
+    </section>
   );
 }
