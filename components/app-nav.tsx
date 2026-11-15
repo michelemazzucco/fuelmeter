@@ -25,9 +25,11 @@ export function AppNav({ showMcp }: { showMcp: boolean }) {
       <div className="flex max-w-5xl items-stretch gap-px px-2">
         <Link
           href="/"
+          aria-label="Fuelmeter"
           className="flex items-center pr-2.5 font-bold tracking-wide"
         >
-          FUELMETER
+          <span className="sm:hidden">FM</span>
+          <span className="hidden sm:inline">FUELMETER</span>
         </Link>
         <nav className="flex items-stretch gap-px">
           {links.map((link) => (

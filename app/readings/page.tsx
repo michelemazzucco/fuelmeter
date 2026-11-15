@@ -94,7 +94,7 @@ function ReadingsPageInner() {
                       <div className="flex items-center gap-2">
                         {format(new Date(r.recorded_at), "dd MMM yyyy")}
                         {r.is_refill && (
-                          <span className="border-[0.5px] border-foreground px-1 uppercase">
+                          <span className="border-[0.5px] border-foreground small-label px-1 pt-0.5 pb-px leading-none tracking-wide uppercase">
                             Refill
                           </span>
                         )}

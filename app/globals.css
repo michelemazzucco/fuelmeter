@@ -194,7 +194,7 @@
     to { transform: rotate(90deg); }
 }
 .live-square {
-    animation: live-tick 3s steps(2, end) infinite;
+    animation: live-tick 1.2s steps(2, end) infinite;
     will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) {
