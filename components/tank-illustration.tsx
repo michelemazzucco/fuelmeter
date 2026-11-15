@@ -84,34 +84,33 @@ function useAnimatedPercent(target: number) {
 export type TankPeriod = {
   /** What the period is, for the accessible name: "12 APR – 3 JUN 2026". */
   label: string
-  /** Level at the end of the period, 0–100. */
-  endPercent: number
-  /** Fuel used in the period as a share of the tank, drawn hatched above the end level. */
-  usedPercent: number
-  /** End levels of the other compared years. */
-  marks: { year: number; percent: number; color: string; dash?: string }[]
+  /** Level of the solid fluid, 0–100. */
+  levelPercent: number
+  /** The fuel used in the period, drawn hatched between its start and end levels. */
+  bandTopPercent: number
+  bandBottomPercent: number
 }
 
 interface TankIllustrationProps {
   /** Fill level 0–100 */
   percent: number
-  /** A period of the year-over-year chart to show in place of the current level. */
+  /** A period selected on a chart, to show in place of the current level. */
   period?: TankPeriod | null
   className?: string
 }
 
 export function TankIllustration({ percent, period, className }: TankIllustrationProps) {
   const hatchId = useId()
-  const level = period ? period.endPercent : percent
-  const displayPct = useAnimatedPercent(level)
-  // Without a period the band top sits on the level, so the band opens from
-  // the fluid and closes back into it.
-  const bandTopPct = useAnimatedPercent(
-    period ? Math.min(100, period.endPercent + period.usedPercent) : percent
-  )
+  const clampPct = (v: number) => Math.min(100, Math.max(0, v))
+  const displayPct = useAnimatedPercent(period ? clampPct(period.levelPercent) : percent)
+  // Without a period the band is closed on the level, so it opens from the
+  // fluid surface and closes back into it.
+  const bandTopPct = useAnimatedPercent(period ? clampPct(period.bandTopPercent) : percent)
+  const bandBottomPct = useAnimatedPercent(period ? clampPct(period.bandBottomPercent) : percent)
   const cyS = fluidSurfaceCy(displayPct)
-  const cyBand = fluidSurfaceCy(bandTopPct)
-  const showBand = cyS - cyBand > 0.5
+  const cyBandTop = fluidSurfaceCy(bandTopPct)
+  const cyBandBottom = fluidSurfaceCy(bandBottomPct)
+  const showBand = cyBandBottom - cyBandTop > 0.5
 
   return (
     <svg
@@ -120,7 +119,7 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
       role="img"
       aria-label={
         period
-          ? `Heating oil tank, ${period.label}: ${Math.round(period.endPercent)}% full at the end, ${Math.round(period.usedPercent)}% of the tank used`
+          ? `Heating oil tank, ${period.label}: ${Math.round(period.bandTopPercent - period.bandBottomPercent)}% of the tank used, from ${Math.round(period.bandTopPercent)}% to ${Math.round(period.bandBottomPercent)}% full`
           : `Heating oil tank, ${Math.round(percent)}% full`
       }
     >
@@ -148,14 +147,14 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
           <ellipse cx={CX} cy={cyS} rx={RX} ry={RY} fill="var(--fluid)" />
         </g>
       )}
-      {/* fuel used in the period: hatched wall and top face, from the end level up to the start level */}
+      {/* fuel used in the period: hatched wall and top face, from the start level down to the end level */}
       {showBand && (
-        <path d={fluidBodyPath(cyBand, cyS)} fill={`url(#${hatchId})`} />
+        <path d={fluidBodyPath(cyBandTop, cyBandBottom)} fill={`url(#${hatchId})`} />
       )}
       {showBand && (
         <ellipse
           cx={CX}
-          cy={cyBand}
+          cy={cyBandTop}
           rx={RX}
           ry={RY}
           fill={`url(#${hatchId})`}
@@ -164,17 +163,15 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {period?.marks.map((mark) => (
+      {showBand && (
         <path
-          key={mark.year}
-          d={frontArcPath(fluidSurfaceCy(mark.percent))}
+          d={frontArcPath(cyBandBottom)}
           fill="none"
-          stroke={mark.color}
-          strokeWidth="1.5"
-          strokeDasharray={mark.dash}
+          stroke="var(--ink)"
+          strokeWidth="0.5"
           vectorEffect="non-scaling-stroke"
         />
-      ))}
+      )}
       <Wireframe />
     </svg>
   )

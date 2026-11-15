@@ -1,5 +1,6 @@
 "use client"
 
+import { memo, useCallback, useMemo } from "react"
 import {
   ChartConfig,
   ChartContainer,
@@ -14,7 +15,24 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from "recharts"
-import { format, addMonths, startOfMonth, differenceInCalendarMonths } from "date-fns"
+import {
+  format,
+  addDays,
+  addMonths,
+  startOfDay,
+  startOfMonth,
+  differenceInCalendarMonths,
+} from "date-fns"
+import { useYearView } from "@/components/year-view"
+import {
+  CHART_MARGIN,
+  RangeChip,
+  SelectionOverlay,
+  Y_AXIS_WIDTH,
+  useRangeSelection,
+  type Range,
+} from "@/components/chart-selection"
+import type { TimeRange } from "@/lib/forecast-period"
 import type { ForecastPoint } from "@/lib/predictions"
 
 interface ConsumptionChartProps {
@@ -51,17 +69,90 @@ function squareDot(props: { cx?: number; cy?: number; index?: number; value?: un
   )
 }
 
-export function ConsumptionChart({
-  forecastPoints,
-  thresholdLiters,
-  capacityLiters,
-  className,
-}: ConsumptionChartProps) {
+const DAY_MS = 86_400_000
+const KEY_STEP_MS = 7 * DAY_MS
+const KEY_START_DAYS = 30
+
+const nearestDayStart = (t: number) => startOfDay(new Date(t + DAY_MS / 2)).getTime()
+
+/** "1 DEC 2026 – 28 FEB 2027", with the first year left out when it is the same. */
+export function timeRangeLabel({ from, to }: TimeRange) {
+  const sameYear = new Date(from).getFullYear() === new Date(to).getFullYear()
+  const a = format(new Date(from), sameYear ? "d MMM" : "d MMM yyyy")
+  const b = format(new Date(to), "d MMM yyyy")
+  return (from === to ? b : `${a} – ${b}`).toUpperCase()
+}
+
+export function ConsumptionChart({ className, ...props }: ConsumptionChartProps) {
+  const { forecastSelection, setForecastSelection } = useYearView()
+  const { forecastPoints } = props
+
+  const domain = useMemo<Range>(
+    () =>
+      forecastPoints.length > 0
+        ? [forecastPoints[0].date, forecastPoints[forecastPoints.length - 1].date]
+        : [0, 1],
+    [forecastPoints]
+  )
+
+  const plot = useRangeSelection({
+    domain,
+    value: useMemo(
+      () => forecastSelection && [forecastSelection.from, forecastSelection.to],
+      [forecastSelection]
+    ),
+    onChange: useCallback(
+      (range) => setForecastSelection(range && { from: range[0], to: range[1] }),
+      [setForecastSelection]
+    ),
+    snap: nearestDayStart,
+    keyStep: KEY_STEP_MS,
+    keyStart: () => {
+      const today = startOfDay(new Date())
+      return [today.getTime(), addDays(today, KEY_START_DAYS).getTime()]
+    },
+  })
+
   if (forecastPoints.length === 0) {
     return (
       <p className="uppercase text-muted-foreground">No data to display yet.</p>
     )
   }
+
+  return (
+    <div>
+      <div className="flex pb-2">
+        <RangeChip
+          label={forecastSelection && timeRangeLabel(forecastSelection)}
+          onClear={() => setForecastSelection(null)}
+        />
+      </div>
+      <div
+        {...plot}
+        aria-label="Tank level and forecast by date. Left and right arrows select and move a period, Shift with an arrow changes its end, Escape clears it."
+      >
+        <ForecastLines {...props} className={className} />
+        {forecastSelection && (
+          <SelectionOverlay
+            domain={domain}
+            range={[forecastSelection.from, forecastSelection.to]}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The Recharts tree. Memoized: the selection changes on every pointer move
+ * and none of it is drawn here.
+ */
+const ForecastLines = memo(function ForecastLines({
+  forecastPoints,
+  thresholdLiters,
+  capacityLiters,
+  className,
+}: ConsumptionChartProps) {
 
   const chartData = forecastPoints.map((p) => ({
     date: p.date,
@@ -105,7 +196,7 @@ export function ConsumptionChart({
 
   return (
     <ChartContainer config={chartConfig} className={className ?? "h-56 w-full"}>
-      <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <LineChart data={chartData} margin={CHART_MARGIN}>
         <CartesianGrid strokeWidth={0.5} className="stroke-muted" />
         <XAxis
           dataKey="date"
@@ -123,7 +214,7 @@ export function ConsumptionChart({
           ticks={yTicks}
           tickLine={false}
           axisLine={{ stroke: "var(--ink)", strokeWidth: 0.5 }}
-          width={38}
+          width={Y_AXIS_WIDTH}
           tickFormatter={(v) => `${v}`}
           className="text-muted-foreground"
         />
@@ -210,4 +301,4 @@ export function ConsumptionChart({
       </LineChart>
     </ChartContainer>
   )
-}
+})

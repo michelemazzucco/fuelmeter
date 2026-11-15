@@ -19,11 +19,11 @@ import { PaperBox, LeaderRow, LoadingLine } from "@/components/paper";
 import { READINGS_CHANGED_EVENT } from "@/components/add-record";
 import { FuelGauge } from "@/components/fuel-gauge";
 import { RunoutCard } from "@/components/runout-card";
-import { ConsumptionChart } from "@/components/consumption-chart";
 import {
-  YearlyLevelChart,
-  styleForYear,
-} from "@/components/yearly-level-chart";
+  ConsumptionChart,
+  timeRangeLabel,
+} from "@/components/consumption-chart";
+import { YearlyLevelChart } from "@/components/yearly-level-chart";
 import {
   TankIllustration,
   type TankPeriod,
@@ -31,6 +31,7 @@ import {
 import { YearViewProvider, useYearView } from "@/components/year-view";
 import { computeDailyLevels, dayRangeLabel } from "@/lib/yearly-levels";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_CONFIG: TankConfig = {
   id: "",
@@ -119,29 +120,34 @@ export default function DashboardPage() {
   );
 
   return (
-    <YearViewProvider levels={yearlyLevels}>
+    <YearViewProvider
+      levels={yearlyLevels}
+      forecastPoints={prediction.forecastPoints}
+    >
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:gap-4">
       <div className="contents lg:block lg:space-y-5 lg:col-span-7">
         <PaperBox label="Estimated run out" className="order-2 lg:order-none">
           <div className="space-y-4">
-            <RunoutCard
-              runOutDate={prediction.runOutDate}
-              daysRemaining={prediction.daysRemaining}
-              hasEnoughData={prediction.hasEnoughData}
-              thresholdLiters={config.low_threshold_liters}
-              thresholdDate={
-                thresholdPoint ? new Date(thresholdPoint.date) : null
-              }
-              runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
-              runOutLate={latePoint ? new Date(latePoint.date) : null}
-              fromHistory={prediction.fromHistory}
-              sinceRefill={annual?.sinceRefill ?? null}
-            />
+            <RunoutRows>
+              <RunoutCard
+                runOutDate={prediction.runOutDate}
+                daysRemaining={prediction.daysRemaining}
+                hasEnoughData={prediction.hasEnoughData}
+                thresholdLiters={config.low_threshold_liters}
+                thresholdDate={
+                  thresholdPoint ? new Date(thresholdPoint.date) : null
+                }
+                runOutEarly={earlyPoint ? new Date(earlyPoint.date) : null}
+                runOutLate={latePoint ? new Date(latePoint.date) : null}
+                fromHistory={prediction.fromHistory}
+                sinceRefill={annual?.sinceRefill ?? null}
+              />
+            </RunoutRows>
             <ConsumptionChart
               forecastPoints={prediction.forecastPoints}
               thresholdLiters={config.low_threshold_liters}
               capacityLiters={config.capacity_liters}
-              className="h-64 w-full pt-2"
+              className="h-64 w-full"
             />
           </div>
         </PaperBox>
@@ -246,6 +252,7 @@ export default function DashboardPage() {
 
         <TankFigure
           levelPercent={levelPercent}
+          todayLiters={prediction.estimatedLevelToday}
           capacityLiters={config.capacity_liters}
         />
       </div>
@@ -254,39 +261,85 @@ export default function DashboardPage() {
   );
 }
 
+const oneDecimal = (v: number) => `${Math.round(v * 10) / 10} L`;
+
 /**
- * The tank drawing. With a period selected on the year-over-year chart it
- * shows that period for the latest compared year that has data in it.
+ * The run-out rows, replaced by the selected period of the run-out chart.
+ * The two sets share one grid cell, so the box keeps the height of the taller
+ * set and the chart does not move under the pointer when a drag swaps them.
+ */
+function RunoutRows({ children }: { children: React.ReactNode }) {
+  const { forecastPeriod: period } = useYearView();
+  const cell = "col-start-1 row-start-1";
+
+  return (
+    <div
+      className="grid"
+      aria-live="polite"
+      style={{ minHeight: "calc(4lh + 0.75rem)" }}
+    >
+      <div className={cn(cell, period && "invisible")} aria-hidden={!!period}>
+        {children}
+      </div>
+      {period && (
+        <div className={cn(cell, "space-y-1 tabular-nums")}>
+          <LeaderRow
+            label={`${period.estimated ? "ESTIMATED USE" : "USED"}, ${timeRangeLabel(period.range)}`}
+            value={`${Math.round(period.consumed)} L`}
+          />
+          <LeaderRow
+            label="DAILY AVERAGE"
+            value={
+              period.dailyLiters != null ? oneDecimal(period.dailyLiters) : "—"
+            }
+          />
+          <LeaderRow
+            label="LEVEL, START → END"
+            value={`${Math.round(period.startLiters)} → ${Math.round(period.endLiters)} L`}
+          />
+          <LeaderRow label="DAYS" value={period.days} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The tank drawing. A period of the year-over-year chart shows the level at
+ * its end with the use hatched above it, for the latest compared year that has
+ * data. A period of the run-out chart shows today's level, with the use
+ * hatched where it is in the tank.
  */
 function TankFigure({
   levelPercent,
+  todayLiters,
   capacityLiters,
 }: {
   levelPercent: number | null;
+  todayLiters: number | null;
   capacityLiters: number;
 }) {
-  const { years, period } = useYearView();
+  const { period, forecastPeriod } = useYearView();
+  const percentOf = (liters: number) => (liters / capacityLiters) * 100;
 
   let tankPeriod: TankPeriod | null = null;
-  const shown = period?.years.find((y) => y.endLiters != null);
-  if (period && shown) {
-    const percentOf = (liters: number) => (liters / capacityLiters) * 100;
-    const latestYear = years[years.length - 1];
+  const year = period?.years.find((y) => y.endLiters != null);
+  if (period && year) {
     tankPeriod = {
-      label: `${dayRangeLabel(period.range)} ${shown.year}`,
-      endPercent: percentOf(shown.endLiters!),
-      usedPercent: percentOf(shown.consumed!),
-      marks: period.years
-        .filter((y) => y !== shown && y.endLiters != null)
-        .map((y) => {
-          const style = styleForYear(latestYear, y.year);
-          return {
-            year: y.year,
-            percent: percentOf(y.endLiters!),
-            color: style.color,
-            dash: style.dash,
-          };
-        }),
+      label: `${dayRangeLabel(period.range)} ${year.year}`,
+      levelPercent: percentOf(year.endLiters!),
+      bandTopPercent: percentOf(year.endLiters! + year.consumed!),
+      bandBottomPercent: percentOf(year.endLiters!),
+    };
+  } else if (forecastPeriod && levelPercent != null) {
+    tankPeriod = {
+      label: timeRangeLabel(forecastPeriod.range),
+      levelPercent:
+        todayLiters != null ? percentOf(todayLiters) : levelPercent,
+      bandTopPercent: percentOf(
+        forecastPeriod.endLiters + forecastPeriod.consumed,
+      ),
+      bandBottomPercent: percentOf(forecastPeriod.endLiters),
     };
   }
 

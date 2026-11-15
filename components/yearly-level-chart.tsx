@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useMemo } from "react"
 import {
   ChartConfig,
   ChartContainer,
@@ -13,10 +13,17 @@ import { cn } from "@/lib/utils"
 import { LeaderRow } from "@/components/paper"
 import { useYearView } from "@/components/year-view"
 import {
+  CHART_MARGIN,
+  RangeChip,
+  SelectionOverlay,
+  Y_AXIS_WIDTH,
+  useRangeSelection,
+  type Range,
+} from "@/components/chart-selection"
+import {
   computeYearStats,
   dayOfYearLabel,
   dayRangeLabel,
-  type DayRange,
   type PeriodStats,
   type PeriodYear,
   type YearStats,
@@ -30,15 +37,9 @@ const MONTH_LABELS = [
 // Month-start day-of-year ticks (non-leap reference year)
 const MONTH_START_DAYS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
 
-const FIRST_DAY = 1
-const LAST_DAY = 366
-
-// The plot area inside the chart box, in px. The selection overlay and the
-// pointer → day mapping are drawn outside Recharts and must agree with it.
-const Y_AXIS_WIDTH = 38
-const PLOT_INSET = { top: 8, right: 8, bottom: 30, left: Y_AXIS_WIDTH }
-
-const DRAG_THRESHOLD_PX = 4
+const DAY_DOMAIN: Range = [1, 366]
+const KEY_STEP_DAYS = 7
+const KEY_START_DAYS = 30
 
 // Ink + dash pairs assigned per year, most recent first. The dash pattern is
 // a secondary encoding so year identity never rests on color alone.
@@ -53,7 +54,7 @@ const SERIES_STYLES = [
 
 // Style follows the year itself (not its position in the active set), so
 // toggling years never repaints the survivors.
-export const styleForYear = (latestYear: number, year: number) =>
+const styleForYear = (latestYear: number, year: number) =>
   SERIES_STYLES[Math.max(0, Math.min(latestYear - year, SERIES_STYLES.length - 1))]
 
 /** Square markers on actual readings only — the rest of the line is interpolated. */
@@ -171,48 +172,6 @@ function PeriodRows({ period }: { period: PeriodStats }) {
   )
 }
 
-const dayFraction = (day: number) => (day - FIRST_DAY) / (LAST_DAY - FIRST_DAY)
-
-/** `left` of a day inside the chart box, as a CSS length. */
-const dayLeft = (day: number) =>
-  `calc(${PLOT_INSET.left}px + (100% - ${PLOT_INSET.left + PLOT_INSET.right}px) * ${dayFraction(day)})`
-
-/** Veils over the days outside the range; the lines inside it keep their full ink. */
-function SelectionOverlay({ range }: { range: DayRange }) {
-  const veil = "pointer-events-none absolute bg-background/70"
-  return (
-    <>
-      <div
-        className={veil}
-        style={{
-          top: PLOT_INSET.top,
-          bottom: PLOT_INSET.bottom,
-          left: PLOT_INSET.left,
-          right: `calc(100% - ${dayLeft(range.fromDay)})`,
-        }}
-      />
-      <div
-        className={veil}
-        style={{
-          top: PLOT_INSET.top,
-          bottom: PLOT_INSET.bottom,
-          left: dayLeft(range.toDay),
-          right: PLOT_INSET.right,
-        }}
-      />
-      <div
-        className="pointer-events-none absolute border-x-[0.5px] border-foreground"
-        style={{
-          top: PLOT_INSET.top,
-          bottom: PLOT_INSET.bottom,
-          left: dayLeft(range.fromDay),
-          right: `calc(100% - ${dayLeft(range.toDay)})`,
-        }}
-      />
-    </>
-  )
-}
-
 type ChartRow = Record<string, number | boolean>
 
 /**
@@ -246,12 +205,12 @@ const LevelLines = memo(function LevelLines({
 
   return (
     <ChartContainer config={chartConfig} className="h-48 w-full">
-      <LineChart data={chartData} margin={{ top: PLOT_INSET.top, right: PLOT_INSET.right, bottom: 0, left: 0 }}>
+      <LineChart data={chartData} margin={CHART_MARGIN}>
         <CartesianGrid strokeWidth={0.5} className="stroke-muted" />
         <XAxis
           dataKey="day"
           type="number"
-          domain={[FIRST_DAY, LAST_DAY]}
+          domain={DAY_DOMAIN}
           ticks={MONTH_START_DAYS}
           tickFormatter={(day: number) =>
             MONTH_LABELS[MONTH_START_DAYS.indexOf(day)] ?? ""
@@ -376,85 +335,25 @@ export function YearlyLevelChart({ className }: { className?: string }) {
     }
   }, [levels])
 
-  const plotRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ pointerId: number; startX: number; startDay: number; moved: boolean } | null>(null)
-  const [dragging, setDragging] = useState(false)
-
-  useEffect(() => {
-    if (!selection) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelection(null)
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [selection, setSelection])
+  const plot = useRangeSelection({
+    domain: DAY_DOMAIN,
+    value: useMemo(() => selection && [selection.fromDay, selection.toDay], [selection]),
+    onChange: useCallback(
+      (range) => setSelection(range && { fromDay: range[0], toDay: range[1] }),
+      [setSelection]
+    ),
+    snap: Math.round,
+    keyStep: KEY_STEP_DAYS,
+    keyStart: () => {
+      const today = getDayOfYear(new Date())
+      return [today - KEY_START_DAYS + 1, today]
+    },
+  })
 
   if (years.length === 0) return null
 
   const latestYear = years[years.length - 1]
   const showForecast = projectionYear !== null && activeYears.includes(projectionYear)
-
-  const dayAt = (clientX: number) => {
-    const rect = plotRef.current!.getBoundingClientRect()
-    const plotWidth = rect.width - PLOT_INSET.left - PLOT_INSET.right
-    const t = (clientX - rect.left - PLOT_INSET.left) / plotWidth
-    return Math.round(FIRST_DAY + Math.min(1, Math.max(0, t)) * (LAST_DAY - FIRST_DAY))
-  }
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // A second finger must not restart the drag from its own position.
-    if (drag.current || (e.pointerType === "mouse" && e.button !== 0)) return
-    drag.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startDay: dayAt(e.clientX),
-      moved: false,
-    }
-  }
-
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = drag.current
-    if (!d || d.pointerId !== e.pointerId) return
-    if (!d.moved) {
-      if (Math.abs(e.clientX - d.startX) < DRAG_THRESHOLD_PX) return
-      d.moved = true
-      e.currentTarget.setPointerCapture(e.pointerId)
-      setDragging(true)
-    }
-    const day = dayAt(e.clientX)
-    setSelection({ fromDay: Math.min(d.startDay, day), toDay: Math.max(d.startDay, day) })
-  }
-
-  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = drag.current
-    if (!d || d.pointerId !== e.pointerId) return
-    drag.current = null
-    setDragging(false)
-    // A tap is how a touch user opens the tooltip, so only a mouse click clears.
-    if (!d.moved && e.type === "pointerup" && e.pointerType === "mouse") setSelection(null)
-  }
-
-  const KEY_STEP_DAYS = 7
-  const KEY_START_DAYS = 30
-
-  /** Arrows move the period by a week, Shift+arrows move its end. */
-  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
-    e.preventDefault()
-    if (!selection) {
-      const today = getDayOfYear(new Date())
-      setSelection({ fromDay: Math.max(FIRST_DAY, today - KEY_START_DAYS + 1), toDay: today })
-      return
-    }
-    const step = e.key === "ArrowLeft" ? -KEY_STEP_DAYS : KEY_STEP_DAYS
-    const { fromDay, toDay } = selection
-    if (e.shiftKey) {
-      setSelection({ fromDay, toDay: Math.min(LAST_DAY, Math.max(fromDay, toDay + step)) })
-      return
-    }
-    const shift = Math.min(LAST_DAY - toDay, Math.max(FIRST_DAY - fromDay, step))
-    setSelection({ fromDay: fromDay + shift, toDay: toDay + shift })
-  }
 
   // Constant for a given set of years, so the chart never moves under the
   // pointer when a drag swaps the year rows for the period rows.
@@ -470,21 +369,10 @@ export function YearlyLevelChart({ className }: { className?: string }) {
         {period ? <PeriodRows period={period} /> : stats && <YearRows stats={stats} />}
       </div>
       <div className="flex flex-col items-start gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
-        {selection ? (
-          <button
-            type="button"
-            onClick={() => setSelection(null)}
-            aria-label={`Clear the selected period, ${dayRangeLabel(selection)}`}
-            className="relative flex items-center gap-1.5 border-[0.5px] border-foreground px-2 py-1 text-xs leading-[1em] whitespace-nowrap uppercase tabular-nums transition-colors after:absolute after:-inset-3 hover:bg-foreground hover:text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-          >
-            {dayRangeLabel(selection)}
-            <span aria-hidden>×</span>
-          </button>
-        ) : (
-          <span className="border-[0.5px] border-transparent py-1 text-xs leading-[1em] whitespace-nowrap uppercase text-muted-foreground">
-            Drag on the chart to select a period
-          </span>
-        )}
+        <RangeChip
+          label={selection && dayRangeLabel(selection)}
+          onClear={() => setSelection(null)}
+        />
         <div
           className="flex border-[0.5px] border-foreground"
           role="group"
@@ -509,19 +397,8 @@ export function YearlyLevelChart({ className }: { className?: string }) {
         </div>
       </div>
       <div
-        ref={plotRef}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onKeyDown={onKeyDown}
-        tabIndex={0}
-        role="group"
+        {...plot}
         aria-label="Tank level by day of the year. Left and right arrows select and move a period, Shift with an arrow changes its end, Escape clears it."
-        className={cn(
-          "relative isolate touch-pan-y select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground [@media(pointer:fine)]:cursor-crosshair [&_.recharts-tooltip-wrapper]:z-10",
-          dragging && "[&_.recharts-tooltip-cursor]:opacity-0 [&_.recharts-tooltip-wrapper]:opacity-0"
-        )}
       >
         <LevelLines
           chartData={chartData}
@@ -529,7 +406,9 @@ export function YearlyLevelChart({ className }: { className?: string }) {
           shown={activeYears}
           projectionYear={projectionYear}
         />
-        {selection && <SelectionOverlay range={selection} />}
+        {selection && (
+          <SelectionOverlay domain={DAY_DOMAIN} range={[selection.fromDay, selection.toDay]} />
+        )}
       </div>
       <div className="flex flex-wrap gap-4 pt-2">
         {activeYears.map((year) => {
