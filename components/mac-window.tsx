@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface MacWindowProps {
@@ -11,6 +12,7 @@ interface MacWindowProps {
   description?: string
   children: React.ReactNode
   className?: string
+  cascade?: boolean
 }
 
 export function MacWindow({
@@ -20,6 +22,7 @@ export function MacWindow({
   description,
   children,
   className,
+  cascade,
 }: MacWindowProps) {
   const [offset, setOffset] = React.useState({ dx: 0, dy: 0 })
   const dragStart = React.useRef<{
@@ -62,10 +65,11 @@ export function MacWindow({
             "fixed top-1/2 left-1/2 z-50 w-[calc(100dvw-2rem)] sm:w-full sm:max-w-sm",
             "rounded-none border-[0.5px] border-foreground bg-popover p-4 text-foreground",
             "shadow-[1ch_0.5lh_0_0_color-mix(in_srgb,var(--foreground)_12%,var(--background))] outline-none",
+            cascade && "sm:[--cascade:16px]",
             className,
           )}
           style={{
-            translate: `calc(-50% + ${offset.dx}px) calc(-50% + ${offset.dy}px)`,
+            translate: `calc(-50% + ${offset.dx}px + var(--cascade, 0px)) calc(-50% + ${offset.dy}px + var(--cascade, 0px))`,
           }}
         >
           {/* Invisible strip over the title edge — the window's drag handle. */}
@@ -77,6 +81,16 @@ export function MacWindow({
             className="absolute inset-x-0 top-0 z-10 h-7 cursor-move select-none"
           />
           <div className="relative border-[0.5px] border-foreground px-5 pt-7 pb-5">
+            <DialogPrimitive.Close
+              aria-label="Close"
+              className="group absolute top-0 right-1.5 z-20 -translate-y-1/2 bg-popover px-1 before:absolute before:-inset-3 before:content-['']"
+            >
+              <X
+                aria-hidden
+                strokeWidth={1.5}
+                className="block size-[11px] transition-colors group-hover:bg-foreground group-hover:text-background group-active:bg-foreground group-active:text-background"
+              />
+            </DialogPrimitive.Close>
             <DialogPrimitive.Title className="absolute -top-[7px] left-1/2 -translate-x-1/2 bg-popover px-2 leading-[1em] font-bold tracking-wide whitespace-nowrap uppercase">
               {title}
             </DialogPrimitive.Title>
