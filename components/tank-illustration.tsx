@@ -41,6 +41,8 @@ const frontArcPath = (cy: number) =>
   `M ${CX - RX} ${cy} A ${RX} ${RY} 0 0 0 ${CX + RX} ${cy}`
 
 const LIGHT_OPACITY = 0.35
+// How much the lighter slab hides of what is behind it (the hatched band).
+const SLAB_VEIL_OPACITY = 0.5
 
 const FILL_MS = 900
 const FOLLOW_MS = 250
@@ -193,13 +195,24 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
       {/* what the compared year used on top: a lighter slab that sits on the hatched band */}
       {showExtra && (
         <g>
-          <path d={fluidBodyPath(cyExtraTop, cyBandTop)} fill="var(--background)" />
+          <path
+            d={fluidBodyPath(cyExtraTop, cyBandTop)}
+            fill="var(--background)"
+            opacity={SLAB_VEIL_OPACITY}
+          />
           <path
             d={fluidBodyPath(cyExtraTop, cyBandTop)}
             fill="var(--shade)"
             opacity={LIGHT_OPACITY}
           />
-          <ellipse cx={CX} cy={cyExtraTop} rx={RX} ry={RY} fill="var(--background)" />
+          <ellipse
+            cx={CX}
+            cy={cyExtraTop}
+            rx={RX}
+            ry={RY}
+            fill="var(--background)"
+            opacity={SLAB_VEIL_OPACITY}
+          />
           <ellipse
             cx={CX}
             cy={cyExtraTop}
