@@ -9,7 +9,13 @@ import {
 } from "@/components/ui/chart"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts"
 import { getDayOfYear } from "date-fns"
-import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { LeaderRow } from "@/components/paper"
 import { useYearView } from "@/components/year-view"
 import {
@@ -38,6 +44,12 @@ const MONTH_LABELS = [
 const MONTH_START_DAYS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
 
 const DAY_DOMAIN: Range = [1, 366]
+
+const NO_COMPARISON = "none"
+
+// Four rows, the most any view shows, so the chart never moves under the
+// pointer when a drag swaps the year rows for the period rows.
+const ROWS_MIN_HEIGHT = "calc(4lh + 1.75rem)"
 const KEY_STEP_DAYS = 7
 const KEY_START_DAYS = 30
 
@@ -305,7 +317,7 @@ const LevelLines = memo(function LevelLines({
 })
 
 export function YearlyLevelChart({ className }: { className?: string }) {
-  const { levels, years, activeYears, toggleYear, selection, setSelection, period } =
+  const { levels, years, activeYears, compareYear, setCompareYear, selection, setSelection, period } =
     useYearView()
 
   const { chartData, stats, projectionYear } = useMemo(() => {
@@ -355,16 +367,20 @@ export function YearlyLevelChart({ className }: { className?: string }) {
   const latestYear = years[years.length - 1]
   const showForecast = projectionYear !== null && activeYears.includes(projectionYear)
 
-  // Constant for a given set of years, so the chart never moves under the
-  // pointer when a drag swaps the year rows for the period rows.
-  const rowSlots = Math.max(4, activeYears.length * 2 - 1)
+  const compareItems = [
+    ...years
+      .filter((year) => year !== latestYear)
+      .reverse()
+      .map((year) => ({ value: String(year), label: `VS ${year}` })),
+    { value: NO_COMPARISON, label: "No comparison" },
+  ]
 
   return (
     <div className={className}>
       <div
         aria-live="polite"
         className="space-y-1 pb-4 tabular-nums"
-        style={{ minHeight: `calc(${rowSlots}lh + ${(rowSlots - 1) * 0.25 + 1}rem)` }}
+        style={{ minHeight: ROWS_MIN_HEIGHT }}
       >
         {period ? <PeriodRows period={period} /> : stats && <YearRows stats={stats} />}
       </div>
@@ -373,28 +389,39 @@ export function YearlyLevelChart({ className }: { className?: string }) {
           label={selection && dayRangeLabel(selection)}
           onClear={() => setSelection(null)}
         />
-        <div
-          className="flex border-[0.5px] border-foreground"
-          role="group"
-          aria-label="Years to compare"
+        <Select
+          items={compareItems}
+          value={compareYear === null ? NO_COMPARISON : String(compareYear)}
+          onValueChange={(value) =>
+            setCompareYear(value === NO_COMPARISON ? null : Number(value))
+          }
         >
-          {years.map((year) => (
-            <button
-              key={year}
-              type="button"
-              aria-pressed={activeYears.includes(year)}
-              onClick={() => toggleYear(year)}
-              className={cn(
-                "px-2 py-1 text-xs leading-[1em] uppercase transition-colors",
-                activeYears.includes(year)
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-foreground hover:text-background"
-              )}
-            >
-              {year}
-            </button>
-          ))}
-        </div>
+          <SelectTrigger
+            aria-label="Year to compare with"
+            className="h-auto! gap-2 border-[0.5px] border-foreground px-2 py-1 leading-[1em] uppercase tabular-nums hover:bg-foreground hover:text-background focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground dark:bg-transparent [&_svg]:size-3! [&_svg]:text-current!"
+          >
+            <SelectValue>
+              {(value: string) =>
+                value === NO_COMPARISON ? `${latestYear}` : `${latestYear} VS ${value}`
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent
+            align="end"
+            alignItemWithTrigger={false}
+            className="min-w-40 border-[0.5px] border-foreground bg-background shadow-none ring-0 before:hidden"
+          >
+            {compareItems.map((item) => (
+              <SelectItem
+                key={item.value}
+                value={item.value}
+                className="py-1.5 uppercase tabular-nums data-highlighted:bg-foreground! data-highlighted:text-background! data-highlighted:**:text-background!"
+              >
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div
         {...plot}

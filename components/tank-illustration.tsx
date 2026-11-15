@@ -40,7 +40,7 @@ function fluidBodyPath(cyTop: number, cyBottom = BOTTOM_CY) {
 const frontArcPath = (cy: number) =>
   `M ${CX - RX} ${cy} A ${RX} ${RY} 0 0 0 ${CX + RX} ${cy}`
 
-const BEFORE_PERIOD_OPACITY = 0.35
+const LIGHT_OPACITY = 0.35
 
 const FILL_MS = 900
 const FOLLOW_MS = 250
@@ -91,6 +91,8 @@ export type TankPeriod = {
   /** The fuel used in the period, drawn hatched between its start and end levels. */
   bandTopPercent: number
   bandBottomPercent: number
+  /** Top of a lighter band on the hatched one: what a compared year used on top of it. */
+  extraTopPercent?: number
 }
 
 interface TankIllustrationProps {
@@ -109,10 +111,15 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
   // fluid surface and closes back into it.
   const bandTopPct = useAnimatedPercent(period ? clampPct(period.bandTopPercent) : percent)
   const bandBottomPct = useAnimatedPercent(period ? clampPct(period.bandBottomPercent) : percent)
+  const extraTopPct = useAnimatedPercent(
+    period ? clampPct(period.extraTopPercent ?? period.bandTopPercent) : percent
+  )
+  const cyExtraTop = fluidSurfaceCy(extraTopPct)
   const cyS = fluidSurfaceCy(displayPct)
   const cyBandTop = fluidSurfaceCy(bandTopPct)
   const cyBandBottom = fluidSurfaceCy(bandBottomPct)
   const showBand = cyBandBottom - cyBandTop > 0.5
+  const showExtra = cyBandTop - cyExtraTop > 0.5
   // Fuel above the band is burned before the period starts: it is drawn
   // lighter, so the eye lands on the band.
   const cyFull = showBand ? Math.max(cyS, cyBandTop) : cyS
@@ -148,7 +155,7 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
         <path
           d={fluidBodyPath(cyS, cyFull)}
           fill="var(--shade)"
-          opacity={BEFORE_PERIOD_OPACITY}
+          opacity={LIGHT_OPACITY}
         />
       )}
       {/* fluid surface with a subtle wave shimmer */}
@@ -163,9 +170,27 @@ export function TankIllustration({ percent, period, className }: TankIllustratio
             rx={RX}
             ry={RY}
             fill="var(--fluid)"
-            opacity={beforePeriod ? BEFORE_PERIOD_OPACITY : 1}
+            opacity={beforePeriod ? LIGHT_OPACITY : 1}
           />
         </g>
+      )}
+      {/* what the compared year used on top of the hatched band */}
+      {showExtra && (
+        <path
+          d={fluidBodyPath(cyExtraTop, cyBandTop)}
+          fill="var(--shade)"
+          opacity={LIGHT_OPACITY}
+        />
+      )}
+      {showExtra && (
+        <ellipse
+          cx={CX}
+          cy={cyExtraTop}
+          rx={RX}
+          ry={RY}
+          fill="var(--fluid)"
+          opacity={LIGHT_OPACITY}
+        />
       )}
       {/* fuel used in the period: hatched wall and top face, from the start level down to the end level */}
       {showBand && (

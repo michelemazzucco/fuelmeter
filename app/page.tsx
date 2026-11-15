@@ -305,10 +305,10 @@ function RunoutRows({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The tank drawing. A period of the year-over-year chart shows the level at
- * its end with the use hatched above it, for the latest compared year that has
- * data. A period of the run-out chart shows today's level, with the use
- * hatched where it is in the tank.
+ * The tank drawing. A period of the year-over-year chart shows the latest
+ * year: the level at the end of the period with the use hatched above it. A
+ * period of the run-out chart shows today's level, with the use hatched where
+ * it is in the tank.
  */
 function TankFigure({
   levelPercent,
@@ -323,13 +323,20 @@ function TankFigure({
   const percentOf = (liters: number) => (liters / capacityLiters) * 100;
 
   let tankPeriod: TankPeriod | null = null;
-  const year = period?.years.find((y) => y.endLiters != null);
-  if (period && year) {
+  const [latest, other] = period?.years ?? [];
+  if (period && latest?.endLiters != null) {
+    const end = latest.endLiters;
+    const used = latest.consumed!;
+    // With a compared year over the same full range, the hatch is the use the
+    // two years share and the lighter band is what one of them used on top.
+    const comparable =
+      latest.complete && other?.complete ? other.consumed! : null;
     tankPeriod = {
-      label: `${dayRangeLabel(period.range)} ${year.year}`,
-      levelPercent: percentOf(year.endLiters!),
-      bandTopPercent: percentOf(year.endLiters! + year.consumed!),
-      bandBottomPercent: percentOf(year.endLiters!),
+      label: `${dayRangeLabel(period.range)} ${latest.year}`,
+      levelPercent: percentOf(end),
+      bandBottomPercent: percentOf(end),
+      bandTopPercent: percentOf(end + Math.min(used, comparable ?? used)),
+      extraTopPercent: percentOf(end + Math.max(used, comparable ?? used)),
     };
   } else if (forecastPeriod && levelPercent != null) {
     tankPeriod = {

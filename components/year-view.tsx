@@ -17,8 +17,10 @@ import type { ForecastPoint } from "@/lib/predictions"
 type YearView = {
   levels: YearlyLevels
   years: number[]
+  /** The latest year, always shown, after the year it is compared with (if any). */
   activeYears: number[]
-  toggleYear: (year: number) => void
+  compareYear: number | null
+  setCompareYear: (year: number | null) => void
   selection: DayRange | null
   setSelection: (range: DayRange | null) => void
   period: PeriodStats | null
@@ -35,7 +37,7 @@ type Selection =
   | { chart: "forecast"; range: TimeRange }
 
 /**
- * Holds the year toggles and the period selected on the year-over-year chart
+ * Holds the compared year and the period selected on the year-over-year chart
  * or on the run-out chart. One selection at a time: the tank illustration
  * shows it, and it can show one period only.
  *
@@ -51,7 +53,7 @@ export function YearViewProvider({
   forecastPoints: ForecastPoint[]
   children: React.ReactNode
 }) {
-  const [toggled, setToggled] = useState<Set<number> | null>(null)
+  const [compare, setCompare] = useState<number | null | undefined>(undefined)
   const [selected, setSelected] = useState<Selection | null>(null)
   const selection = selected?.chart === "years" ? selected.range : null
   const forecastSelection = selected?.chart === "forecast" ? selected.range : null
@@ -66,20 +68,13 @@ export function YearViewProvider({
   )
 
   const years = useMemo(() => levels.byYear.map(([year]) => year), [levels])
+  const latestYear = years[years.length - 1]
+  // Until the user picks, the latest year is compared with the one before it.
+  const picked = compare === undefined ? (years[years.length - 2] ?? null) : compare
+  const compareYear = picked !== null && picked !== latestYear && years.includes(picked) ? picked : null
   const activeYears = useMemo(
-    () => (toggled ? years.filter((year) => toggled.has(year)) : years.slice(-2)),
-    [years, toggled]
-  )
-
-  const toggleYear = useCallback(
-    (year: number) =>
-      setToggled((prev) => {
-        const next = new Set(prev ?? years.slice(-2))
-        if (next.has(year)) next.delete(year)
-        else next.add(year)
-        return next
-      }),
-    [years]
+    () => (compareYear === null ? years.slice(-1) : [compareYear, latestYear]),
+    [years, compareYear, latestYear]
   )
 
   const period = useMemo(
@@ -100,7 +95,8 @@ export function YearViewProvider({
       levels,
       years,
       activeYears,
-      toggleYear,
+      compareYear,
+      setCompareYear: setCompare,
       selection,
       setSelection,
       period,
@@ -113,7 +109,7 @@ export function YearViewProvider({
       levels,
       years,
       activeYears,
-      toggleYear,
+      compareYear,
       selection,
       setSelection,
       period,
