@@ -239,6 +239,12 @@ export default function DashboardPage() {
           )}
         </PaperBox>
 
+        <TankFigure
+          levelPercent={levelPercent}
+          todayLiters={prediction.estimatedLevelToday}
+          capacityLiters={config.capacity_liters}
+        />
+
         {boilerDays.length > 0 && (
           <HeatingBox
             weeks={boilerPeriods.weeks}
@@ -249,12 +255,6 @@ export default function DashboardPage() {
             className="order-3 lg:order-none"
           />
         )}
-
-        <TankFigure
-          levelPercent={levelPercent}
-          todayLiters={prediction.estimatedLevelToday}
-          capacityLiters={config.capacity_liters}
-        />
       </div>
     </div>
     </YearViewProvider>
