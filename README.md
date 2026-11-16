@@ -80,8 +80,8 @@ connector in Claude and ask things like:
 
 The endpoint was public for about a day. Then I thought about who pays when a
 stranger calls it in a loop (me, in Mastra credit and Turso quota), so now it
-wants a key. The key goes in the URL, because Claude's custom connectors can't
-send a header, and a URL can leak. So the tools still show only what the dashboard
+wants a key. The key can go in the URL, for the clients that can't send a
+header, and a URL can leak. So the tools still show only what the dashboard
 shows to somebody who is not logged in, and they read the database with a
 read-only token. The boiler hours come per week or per month and never per day,
 because the daily values would tell you when the house is empty.
