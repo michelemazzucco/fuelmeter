@@ -34,6 +34,7 @@ import {
 } from "@/components/chart-selection"
 import type { TimeRange } from "@/lib/forecast-period"
 import type { ForecastPoint } from "@/lib/predictions"
+import { TodayLabel, todayAnchor } from "@/components/chart-today-label"
 
 interface ConsumptionChartProps {
   forecastPoints: ForecastPoint[]
@@ -246,11 +247,7 @@ const ForecastLines = memo(function ForecastLines({
             stroke="var(--ink)"
             strokeWidth={0.5}
             strokeDasharray="1 3"
-            label={{
-              value: "TODAY",
-              position: "insideTopRight",
-              fill: "var(--muted-foreground)",
-            }}
+            label={<TodayLabel anchor={todayAnchor(now, minDate, maxDate)} />}
           />
         )}
         <Line

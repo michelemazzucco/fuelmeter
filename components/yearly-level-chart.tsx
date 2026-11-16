@@ -7,6 +7,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { TodayLabel, todayAnchor } from "@/components/chart-today-label"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts"
 import { getDayOfYear } from "date-fns"
 import {
@@ -275,11 +276,7 @@ const LevelLines = memo(function LevelLines({
             stroke="var(--ink)"
             strokeWidth={0.5}
             strokeDasharray="1 3"
-            label={{
-              value: "TODAY",
-              position: "insideTopRight",
-              fill: "var(--muted-foreground)",
-            }}
+            label={<TodayLabel anchor={todayAnchor(todayDay, DAY_DOMAIN[0], DAY_DOMAIN[1])} />}
           />
         )}
         {showForecast && (

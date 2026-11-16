@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
  * height.
  */
 export const Y_AXIS_WIDTH = 38
-export const PLOT_INSET = { top: 8, right: 8, bottom: 30, left: Y_AXIS_WIDTH }
+export const PLOT_INSET = { top: 18, right: 0, bottom: 30, left: Y_AXIS_WIDTH }
 export const CHART_MARGIN = { top: PLOT_INSET.top, right: PLOT_INSET.right, bottom: 0, left: 0 }
 
 const DRAG_THRESHOLD_PX = 4

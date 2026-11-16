@@ -45,7 +45,7 @@ export function BoilerHoursChart({
 
   return (
     <ChartContainer config={chartConfig} className={className ?? "h-40 w-full"}>
-      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={1}>
+      <BarChart data={data} margin={{ top: 8, right: 0, bottom: 0, left: 0 }} barCategoryGap={1}>
         <CartesianGrid vertical={false} strokeWidth={0.5} className="stroke-muted" />
         <XAxis
           dataKey="week"
