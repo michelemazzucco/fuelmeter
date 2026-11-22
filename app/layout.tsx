@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Ubuntu_Mono } from "next/font/google";
+import PlausibleProvider from "next-plausible";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { isAuthenticated } from "@/lib/auth";
@@ -26,12 +27,14 @@ export default async function RootLayout({
   return (
     <html lang="en" className={cn("h-full antialiased", ubuntuMono.variable)}>
       <body className="min-h-full flex flex-col bg-background text-foreground px-1 lg:px-0">
-        <AuthProvider isAuthenticated={authed}>
-          <AppNav showMcp={Boolean(process.env.MCP_URL)} />
-          <main className="flex-1 w-full px-2 pb-8 pt-6 max-w-5xl">
-            {children}
-          </main>
-        </AuthProvider>
+        <PlausibleProvider domain="michelemazzucco.it">
+          <AuthProvider isAuthenticated={authed}>
+            <AppNav showMcp={Boolean(process.env.MCP_URL)} />
+            <main className="flex-1 w-full px-2 pb-8 pt-6 max-w-5xl">
+              {children}
+            </main>
+          </AuthProvider>
+        </PlausibleProvider>
       </body>
     </html>
   );
